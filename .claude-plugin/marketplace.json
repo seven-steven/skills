@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "seven-skills",
+      "source": "seven-skills",
+      "description": "A collection of AI agent skills for software development",
+      "skills": ["./skills/example-skill"]
+    }
+  ]
+}
