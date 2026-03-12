@@ -1,13 +1,18 @@
 {
+  "name": "seven-skills",
+  "owner": {
+    "name": "seven-steven"
+  },
   "metadata": {
-    "pluginRoot": "./plugins"
+    "description": "A collection of AI agent skills for software development"
   },
   "plugins": [
     {
-      "name": "seven-skills",
-      "source": "seven-skills",
-      "description": "A collection of AI agent skills for software development",
-      "skills": ["./skills/example-skill"]
+      "name": "git-commit",
+      "source": "./",
+      "strict": false,
+      "description": "Create a git commit with staged changes",
+      "skills": ["./skills/git-commit"]
     }
   ]
 }
