@@ -9,10 +9,21 @@
   "plugins": [
     {
       "name": "git-commit",
-      "source": "./",
+      "source": "./skills",
       "strict": false,
       "description": "Create a git commit with staged changes",
-      "skills": ["./skills/git-commit"]
+      "skills": [
+        "./git-commit"
+      ]
+    },
+    {
+      "name": "daily-report",
+      "source": "./skills",
+      "strict": false,
+      "description": "Generate daily work report from git commit history",
+      "skills": [
+        "./daily-report"
+      ]
     }
   ]
 }

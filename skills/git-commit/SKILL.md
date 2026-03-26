@@ -1,7 +1,8 @@
 ---
 name: git-commit
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*)
-description: Create a git commit
+description: 提交 git 代码变更。当用户提到"提交代码"、"git commit"、"commit changes"、"提交变更"或需要根据当前 git 状态生成 commit message 时触发。
+argument-hint: <append message> （可选参数，会被追加到生成的 commit message 中）
 ---
 
 ## Context
@@ -13,9 +14,13 @@ description: Create a git commit
 
 ## Your task
 
-Based on the above changes, create a single git commit.
+Based on the above changes and chat history, create a single git commit for current work content.
 
 You have the capability to call multiple tools in a single response. Stage and create the commit using a single message. Do not use any other tools or do anything else. Do not send any other text or messages besides these tool calls.
+
+You should always user Angular Style Commit Message format, which is: `<type>(<scope>): <subject>`
+
+If user provided <append message>, append it to the subject part of the generated commit message.
 
 ## Constitution
 
