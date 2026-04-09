@@ -11,33 +11,53 @@ Analyze today's work based on git commit history and generate a daily report.
 
 ## Context
 
-- Today's commits: !`git log --since="midnight" --pretty=format:"%s" --all`
 - Git remote: !`git remote get-url origin 2>/dev/null || echo ""`
 - Current directory name: !`basename $(pwd)`
 - Repository root: !`git rev-parse --show-toplevel`
+- Cached last commit id: !`python3 $SKILL_SCRIPTS_DIR/cache.py read-commit $(git rev-parse --show-toplevel) 2>/dev/null || echo ""`
+- Today's commits: !`cached_id=$(python3 $SKILL_SCRIPTS_DIR/cache.py read-commit $(git rev-parse --show-toplevel) 2>/dev/null); if [ -n "$cached_id" ]; then git log "${cached_id}..HEAD" --pretty=format:"%s" --all; else git log --since="midnight" --pretty=format:"%s" --all; fi`
+- Latest commit hash: !`git log -1 --pretty=format:"%H" --all`
+
+## Path Resolution
+
+This skill bundles scripts under its installation directory. Before executing any script command, determine the absolute path of the `scripts/` directory:
+
+1. Try relative path `scripts/` first (works for local / project-level installs)
+2. If that fails, search for the anchor file `cache.py` under:
+   - `~/.claude/plugins/cache/**/daily-report/scripts/cache.py` (global plugin install)
+   - `<skill-source>/skills/daily-report/scripts/cache.py` (project-level install)
+3. Store the resolved path as `$SKILL_SCRIPTS_DIR` and use it in all subsequent script calls
 
 ## Steps
 
-1. If there are no commits today, inform the user and exit
-2. Determine project name with the following priority:
+1. Resolve `$SKILL_SCRIPTS_DIR` following the **Path Resolution** rules above
+2. If there are no commits (based on cached range or today), inform the user and exit
+3. Determine project name with the following priority:
    - If user provided project name as argument, use it and cache it:
-     `python3 scripts/cache.py write <repo-root> <project-name>`
-   - Run `python3 scripts/cache.py read <repo-root>` to check cache, use cached value if exists
+     `python3 $SKILL_SCRIPTS_DIR/cache.py write <repo-root> <project-name>`
+   - Run `python3 $SKILL_SCRIPTS_DIR/cache.py read <repo-root>` to check cache, use cached value if exists
    - Extract repository name from git remote URL (remove `.git` suffix and path prefix)
    - Use current directory name as fallback
-3. Generate report following the output format
+4. Generate report following the output format
+5. Cache the latest commit id:
+   `python3 $SKILL_SCRIPTS_DIR/cache.py write-commit <repo-root> <latest-commit-hash>`
 
 ## Output Format
 
-Each log entry on a separate line, strictly follow this format:
+Each log entry on a separate line, strictly follow this format, no other additional message:
 
+```
 - ProjectName-WorkContent;
+- ProjectName-BusinessModule-WorkContent;
+```
 
 ### Example
 
 ```
 - ProjectName-WorkContent1;
-- ProjectName-WorkContent2;
+- ProjectName-ModuleA-WorkContent2;
+- ProjectName-ModuleA-WorkContent3;
+- ProjectName-ModuleB-WorkContent4;
 ```
 
 ### Rules
@@ -45,6 +65,8 @@ Each log entry on a separate line, strictly follow this format:
 - Each log entry on a separate line, use LF line endings
 - Each line starts with `- `
 - `ProjectName` and `WorkContent` are separated by `-`, both must be non-empty
+- `BusinessModule` is optional, sits between `ProjectName` and `WorkContent`
+- When `BusinessModule` is present, entries should be grouped by module
 - Each line ends with Chinese semicolon (；)
 
 ## Validation
@@ -52,7 +74,7 @@ Each log entry on a separate line, strictly follow this format:
 After generating the report, run the format validation script:
 
 ```
-echo '<output-content>' | python3 scripts/validate.py
+echo '<output-content>' | python3 $SKILL_SCRIPTS_DIR/validate.py
 ```
 
 If validation fails, fix the format based on error messages and re-validate until it passes.

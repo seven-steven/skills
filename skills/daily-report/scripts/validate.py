@@ -3,19 +3,27 @@
 
 Expected format:
   - 项目名称-工作内容；
-  - 项目名称-工作内容；
+  - 项目名称-业务模块-工作内容；
 
 Each line must:
   1. Start with "- "
-  2. Contain exactly one "-" as separator between 项目名称 and 工作内容
-  3. Both 项目名称 and 工作内容 must be non-empty
+  2. Contain 1 or 2 "-" separators (2 segments or 3 segments)
+  3. All segments (项目名称, 业务模块, 工作内容) must be non-empty
   4. End with Chinese semicolon "；"
 """
 
 import re
 import sys
 
-PATTERN = re.compile(r"^-\s*.+-.+；$")
+PATTERN = re.compile(r"^-\s*(.+-.+-.+|.+-.+)；$")
+
+
+def _parse_segments(line: str) -> tuple[list[str], str | None]:
+    """Parse a validated line into segments and optional error."""
+    body = line.lstrip("- ").rstrip("；").strip()
+    parts = body.split("-")
+    return parts, None
+
 
 def validate(text: str) -> list[str]:
     errors = []
@@ -34,15 +42,23 @@ def validate(text: str) -> list[str]:
                 errors.append(f"  → 应以中文分号 \"；\" 结尾，当前结尾: {line[-1]!r}")
             continue
 
-        # 提取项目名称和工作内容
-        body = line[1:].strip()  # 去掉 "- "
-        sep_pos = body.find("-")
-        project = body[:sep_pos].strip()
-        work = body[sep_pos + 1:].rstrip("；").strip()
+        parts, _ = _parse_segments(line)
+        if len(parts) == 2:
+            project, work = parts
+            module = None
+        elif len(parts) >= 3:
+            project = parts[0]
+            module = parts[1]
+            work = "-".join(parts[2:])
+        else:
+            errors.append(f"第 {i} 行段数不足: {line!r}")
+            continue
 
-        if not project:
+        if not project.strip():
             errors.append(f"第 {i} 行项目名称为空: {line!r}")
-        if not work:
+        if module is not None and not module.strip():
+            errors.append(f"第 {i} 行业务模块为空: {line!r}")
+        if not work.strip():
             errors.append(f"第 {i} 行工作内容为空: {line!r}")
 
     # 检查换行符：每条日志必须独立一行
