@@ -47,17 +47,26 @@ This skill bundles scripts under its installation directory. Before executing an
 Each log entry on a separate line, strictly follow this format, no other additional message:
 
 ```
-- ProjectName-WorkContent;
-- ProjectName-BusinessModule-WorkContent;
+- ProjectName-WorkContent；
+- ProjectName-BusinessModule-WorkContent；
 ```
 
 ### Example
 
 ```
-- ProjectName-WorkContent1;
-- ProjectName-ModuleA-WorkContent2;
-- ProjectName-ModuleA-WorkContent3;
-- ProjectName-ModuleB-WorkContent4;
+- ProjectName-ModelA-WorkContent1；
+- ProjectName-ModelA-WorkContent2；
+- ProjectName-FunctionA-WorkContent3；
+- ProjectName-FunctionA-WorkContent4；
+- ProjectName-TaskA-WorkContent5；
+```
+
+After compression (merge by module):
+
+```
+- ProjectName-ModelA-WorkContent1、WorkContent2；
+- ProjectName-FunctionA-WorkContent3、WorkContent4；
+- ProjectName-TaskA-WorkContent5；
 ```
 
 ### Rules
@@ -68,6 +77,13 @@ Each log entry on a separate line, strictly follow this format, no other additio
 - `BusinessModule` is optional, sits between `ProjectName` and `WorkContent`
 - When `BusinessModule` is present, entries should be grouped by module
 - Each line ends with Chinese semicolon (；)
+
+### Compression Rules
+
+- Merge multiple work items under the same `BusinessModule` into a single line, separated by Chinese enumeration comma (`、`)
+- Closely related modules may be consolidated into a higher-level category (e.g. "error handling" + "logging" → "robustness")
+- Strip redundant verbs and filler words, keep only the core action
+- Target: reduce final entry count to ~40%-50% of the raw commit count
 
 ## Validation
 
