@@ -28,3 +28,4 @@ If user provided <append message>, append it to the <subject> part of the genera
 - Write commit message in user's preferred language.
 - Don't add `Co-Authored-By` content in commit message。
 - Only stage and commit files that are relevant to the current session's work. Ignore unrelated or stale changes unless the user **explicitly** requests them. When in doubt, ask which files to include rather than assuming scope.
+- If the current session / git working tree contains a large amount of changes, split them atomically into multiple commits by different tasks / purposes. Each commit should represent a single logical change with a coherent scope, rather than bundling unrelated work together.
