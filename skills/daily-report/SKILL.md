@@ -14,9 +14,10 @@ Analyze today's work based on git commit history and generate a daily report.
 - Git remote: !`git remote get-url origin 2>/dev/null || echo ""`
 - Current directory name: !`basename $(pwd)`
 - Repository root: !`git rev-parse --show-toplevel`
+- Current user email: !`git config user.email`
 - Cached last commit id: !`python3 $SKILL_SCRIPTS_DIR/cache.py read-commit $(git rev-parse --show-toplevel) 2>/dev/null || echo ""`
-- Today's commits: !`cached_id=$(python3 $SKILL_SCRIPTS_DIR/cache.py read-commit $(git rev-parse --show-toplevel) 2>/dev/null); if [ -n "$cached_id" ]; then git log "${cached_id}..HEAD" --pretty=format:"%s" --all; else git log --since="midnight" --pretty=format:"%s" --all; fi`
-- Latest commit hash: !`git log -1 --pretty=format:"%H" --all`
+- Today's commits (current user only): !`user_email=$(git config user.email); cached_id=$(python3 $SKILL_SCRIPTS_DIR/cache.py read-commit $(git rev-parse --show-toplevel) 2>/dev/null); if [ -n "$cached_id" ]; then git log "${cached_id}..HEAD" --author="$user_email" --pretty=format:"%s" --all; else git log --since="midnight" --author="$user_email" --pretty=format:"%s" --all; fi`
+- Latest commit hash (current user only): !`git log -1 --author="$(git config user.email)" --pretty=format:"%H" --all`
 
 ## Path Resolution
 
