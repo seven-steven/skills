@@ -24,6 +24,15 @@
       "skills": [
         "./daily-report"
       ]
+    },
+    {
+      "name": "effort-estimation",
+      "source": "./skills",
+      "strict": false,
+      "description": "Estimate IT project R&D effort (person-days) by decomposing requirements into work items across six categories and three complexity levels",
+      "skills": [
+        "./effort-estimation"
+      ]
     }
   ]
 }
