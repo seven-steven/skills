@@ -27,6 +27,19 @@ Before calling any script, resolve the skill's install directory:
    - `<repo>/skills/effort-estimation/scripts/validate.py` (project-level)
 3. Store as `$SKILL_SCRIPTS_DIR` / `$SKILL_REFERENCES_DIR`
 
+## Python Environment
+
+Scripts depend on Python 3 with `openpyxl` (xlsx) and `python-docx` (.docx). To keep the skill self-contained on every machine, a venv is provisioned **inside the skill's own install directory** (`<skill-root>/.venv/`) on first run. Subsequent runs reuse it instantly.
+
+Before any script call:
+
+```bash
+SKILL_PY=$(bash "$SKILL_SCRIPTS_DIR/ensure_env.sh")
+```
+
+- If `ensure_env.sh` exits non-zero → Python 3 is missing on the user's machine. Relay the stderr (which contains platform-specific install instructions: brew / apt / pacman / python.org) to the user and stop. Do not fall back to the system `python3`.
+- On success, `$SKILL_PY` is the absolute path to the venv's `python3` — use it in **every** subsequent script invocation in place of bare `python3`.
+
 ## Clarification Policy
 
 Only two situations **require** calling `AskUserQuestion`; for everything else, make a reasonable assumption and **record it in the 备注 column** of the affected row so the user can spot and override it:
@@ -38,13 +51,13 @@ For module decomposition ambiguity, complexity boundaries, or ambiguous terms: *
 
 ## Steps
 
-1. **Resolve paths** per the Path Resolution section.
+1. **Resolve paths** per the Path Resolution section, then **bootstrap the Python environment** per the Python Environment section to obtain `$SKILL_PY`. If bootstrapping fails, stop and relay the install hint to the user.
 
 2. **Parse arguments**: if input missing → ask. If team composition missing → `AskUserQuestion` with 偏资深 / 均衡 / 偏初级 / 自定义. Buffer is **optional** (default 0) — parse `buffer=0.15` if provided; do not ask if absent.
 
 3. **Read input**:
    - `.md` / `.txt`: read directly
-   - `.docx` / `.xlsx`: `python3 $SKILL_SCRIPTS_DIR/read_input.py <path>`
+   - `.docx` / `.xlsx`: `$SKILL_PY $SKILL_SCRIPTS_DIR/read_input.py <path>`
 
 4. **Load baseline table** from `$SKILL_REFERENCES_DIR/effort-table.md`.
 
@@ -71,12 +84,12 @@ For module decomposition ambiguity, complexity boundaries, or ambiguous terms: *
 11. **Persist to xlsx**:
 
     ```bash
-    echo '<json>' | python3 $SKILL_SCRIPTS_DIR/export_excel.py .
+    echo '<json>' | $SKILL_PY $SKILL_SCRIPTS_DIR/export_excel.py .
     ```
 
 12. **Validate**:
     ```bash
-    echo '<json>' | python3 $SKILL_SCRIPTS_DIR/validate.py
+    echo '<json>' | $SKILL_PY $SKILL_SCRIPTS_DIR/validate.py
     ```
     If validation fails, fix and re-emit.
 
