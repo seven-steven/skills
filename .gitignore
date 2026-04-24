@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Skill-creator evaluation workspaces
+# 每个 skill 对应的 *-workspace/ 是本地评估产物（iteration/benchmark/viewer/venv），
+# 不纳入版本控制；实际 skill 代码在 skills/<name>/ 下
+skills/*-workspace/
+
+# OS
+.DS_Store
+Thumbs.db
