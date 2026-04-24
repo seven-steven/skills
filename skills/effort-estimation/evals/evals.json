@@ -6,14 +6,17 @@
       "name": "learning-platform-md",
       "prompt": "请读取需求文档 skills/effort-estimation/tests/input-text.md，按内部员工学习平台的功能清单拆解研发工时。团队构成使用均衡配置（senior=1, middle=2, junior=1）。产出《工作详单》《工时汇总》两张表并导出 xlsx。",
       "files": ["skills/effort-estimation/tests/input-text.md"],
-      "expected_output": "两张表 + 一个 xlsx 文件；六类工作项齐全；合计工时合理（量级 30-80 pd）；详单与汇总聚合一致。",
+      "expected_output": "7 列详单 + 汇总表 + xlsx；前端按页面拆、后端按业务动作拆、运维至少 2 行；聚合一致。",
       "assertions": [
-        {"text": "工作详单存在且每行含业务模块/功能点/工作项类型/复杂度/工时/备注六字段"},
-        {"text": "工作项类型取值严格在 {需求,设计,前端,后端,测试,运维} 内"},
-        {"text": "复杂度取值严格在 {简单,中等,复杂} 内"},
+        {"text": "工作详单七字段齐全（含 工作内容 列）"},
+        {"text": "工作项类型严格在 {需求,设计,前端,后端,测试,运维} 内"},
+        {"text": "复杂度严格在 {简单,中等,复杂} 内"},
         {"text": "工时为正数且为整数或保留 1 位小数"},
-        {"text": "工时汇总与详单按(模块,类型)聚合一致"},
-        {"text": "输出包含每工作项的复杂度判定一句话依据"},
+        {"text": "前端至少出现一行按页面拆分（工作内容含『页』或具体页面名）"},
+        {"text": "后端 work_content 用业务语言，不含 HTTP 方法（GET/POST/PUT/DELETE）或 URL 路径"},
+        {"text": "运维 ≥ 2 行（部署 + 监控 最低配）"},
+        {"text": "需求/设计/测试 每模块仅 1 行"},
+        {"text": "详单与汇总按(模块,类型)聚合一致"},
         {"text": "生成了 effort-estimation-<timestamp>.xlsx 文件"}
       ]
     },
@@ -22,13 +25,15 @@
       "name": "crm-docx",
       "prompt": "需求在 skills/effort-estimation/tests/input.docx，这是 CRM 子模块。团队构成选择偏资深（senior=2, middle=1, junior=0）。给出工作详单与工时汇总，并导出 xlsx。",
       "files": ["skills/effort-estimation/tests/input.docx"],
-      "expected_output": "正确解析 docx（调用 read_input.py）；按 CRM 5 个子模块拆分；因团队偏资深，整体工时应略低于均衡配置。",
+      "expected_output": "正确解析 docx；按 CRM 5 个子模块拆分；前端页面 + 后端业务动作细粒度；运维 ≥ 2 行。",
       "assertions": [
-        {"text": "通过 read_input.py 解析 docx 成功（未要求用户手动提供内容）"},
-        {"text": "拆分覆盖 5 个子模块：客户线索/跟进记录/商机管理/销售看板/数据权限"},
+        {"text": "通过 read_input.py 成功解析 docx"},
+        {"text": "拆分覆盖 5 个子模块：客户线索 / 跟进记录 / 商机管理 / 销售看板 / 数据权限"},
         {"text": "团队系数 k ≈ 0.87（senior=2 middle=1 junior=0）"},
-        {"text": "工作详单 + 工时汇总两张表齐全"},
-        {"text": "汇总总计 = 详单总计（脚本可校验）"}
+        {"text": "前端至少出现一行按页面拆分"},
+        {"text": "后端 work_content 全部用业务语言（非 URL / HTTP 方法）"},
+        {"text": "运维 ≥ 2 行"},
+        {"text": "详单与汇总聚合一致"}
       ]
     },
     {
@@ -36,12 +41,14 @@
       "name": "ecommerce-xlsx",
       "prompt": "请根据 skills/effort-estimation/tests/input.xlsx 中的功能清单进行工时评估。团队构成未指定，请询问我。",
       "files": ["skills/effort-estimation/tests/input.xlsx"],
-      "expected_output": "主动通过 AskUserQuestion 询问团队构成；解析 xlsx 两个 sheet；按订单/支付/物流三模块拆分。",
+      "expected_output": "主动询问团队构成；解析 xlsx 两个 sheet；按订单/支付/物流 3 模块拆分；NFR 映射到现有六类 + 运维多行；不造第 7 类。",
       "assertions": [
-        {"text": "主动调用 AskUserQuestion 询问团队构成，未擅自默认"},
-        {"text": "解析 xlsx 成功（通过 read_input.py）"},
-        {"text": "按订单模块/支付模块/物流模块 3 个模块拆分"},
-        {"text": "识别并至少在备注中提及非功能要求（200 TPS / 99.9% 可用性）对运维/后端的影响"},
+        {"text": "主动调用 AskUserQuestion 询问团队构成"},
+        {"text": "解析 xlsx 成功"},
+        {"text": "按订单/支付/物流 3 个模块拆分"},
+        {"text": "后端 work_content 用业务语言（非 URL / HTTP 方法）"},
+        {"text": "运维 ≥ 2 行，且包含性能压测或灾备相关项（对应 200 TPS / 99.9% SLA）"},
+        {"text": "未新增第 7 类模块（非功能独立）"},
         {"text": "详单与汇总聚合一致"}
       ]
     }

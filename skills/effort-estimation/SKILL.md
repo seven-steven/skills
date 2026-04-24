@@ -61,13 +61,22 @@ For module decomposition ambiguity, complexity boundaries, or ambiguous terms: *
 
 4. **Load baseline table** from `$SKILL_REFERENCES_DIR/effort-table.md`.
 
-5. **Decompose** — critical: distinguish **project/module-level** from **feature-level** work items, otherwise totals inflate 20-30%:
-   - **需求 / 设计 / 运维**: project- or module-level. List **once per module** (or once per project for 运维), NOT per feature. Exception: a single feature introduces a brand-new domain model, a novel architecture decision, or a dedicated deploy target — then list that category for that feature.
-   - **前端 / 后端 / 测试**: feature-level. Enumerate per feature point. Skip a category when clearly inapplicable (e.g., a pure backend batch job has no 前端).
+5. **Decompose** — 每条工作项的行粒度由类型决定：
 
-   If module decomposition is ambiguous → pick the most reasonable split and note 假设 in 备注 (do not block on asking).
+   | 类型 | 行粒度                 | `工作内容` 列填法                                                               |
+   | ---- | ---------------------- | ------------------------------------------------------------------------------- |
+   | 需求 | 1 行/模块              | `-`                                                                             |
+   | 设计 | 1 行/模块              | `-`                                                                             |
+   | 前端 | **1 行/页面**          | 页面名（下单页 / 订单列表页 / 个人中心）                                        |
+   | 后端 | **1 行/业务动作**      | 业务语言（新增订单 / 查询订单 / 订单状态校验）**禁写 URL 或 HTTP 方法**         |
+   | 测试 | 1 行/模块              | `-`                                                                             |
+   | 运维 | **1 行/工作项，≥2 项** | 运维工作项（部署流水线 / 监控告警 / 日志系统 / 应急预案 / 性能压测 / 灾备多活） |
+   - **需求/设计/测试** 保持模块级 1 次，不按功能点展开（虚增主因）
+   - **前端/后端/运维** 按上述细粒度拆行，每行独立判复杂度
+   - **运维硬约束**：部署 + 监控 最低配（2 行），非平凡项目 3-5 行
+   - 模块拆分有歧义 → 选最合理方案，在 `备注` 写 `假设: xxx`（不阻塞）
 
-6. **Judge complexity** per work item using the four dimensions in `effort-table.md` (数据实体数 / 交互点数 / 算法规则密度 / 集成点数). Pick 简单 / 中等 / 复杂 and give a **one-sentence rationale** in 备注. Boundary cases: pick the lower level and mark `⚠ 边界偏低` in 备注 (do not block).
+6. **Judge complexity** per **row** (not per feature) using the rubric in `effort-table.md`. Pick 简单 / 中等 / 复杂, give a one-sentence rationale in `备注`. 边界落判取下档，`备注` 标 `⚠ 边界偏低`。
 
 7. **Handle NFR** per the "非功能要求处理规则" section of `effort-table.md` — performance / availability / compliance map into existing six categories, do **not** create a 7th category.
 
@@ -103,13 +112,17 @@ See `references/output-example.md` for a full worked example. The minimum struct
 
 ### 2. 工作详单
 
-6 列：`业务模块 | 功能点 | 工作项类型 | 复杂度 | 工时(pd) | 备注`
+**7 列**：`业务模块 | 功能点 | 工作项类型 | 工作内容 | 复杂度 | 工时(pd) | 备注`
 
 - 工作项类型 ∈ {需求, 设计, 前端, 后端, 测试, 运维}
 - 复杂度 ∈ {简单, 中等, 复杂}
 - 工时为正数，整数或保留 1 位小数
-- 项目级工作项（需求/设计/运维）：功能点列填 `-`，备注写"项目级"或"模块级"
-- 假设 / 边界 / 拆细建议均在 备注 列标注
+- `工作内容` 列：
+  - 前端=页面名；后端=业务动作（**禁 HTTP 方法 / URL**）；运维=工作项名
+  - 需求 / 设计 / 测试 行填 `-`
+- 模块级行（需求/设计/测试）：功能点列填 `-`，备注写"模块级"
+- 项目级运维行：业务模块可填 `项目`，功能点 `-`
+- 假设 / 边界 / 拆细建议均写在 备注 列
 
 ### 3. 工时汇总
 
@@ -126,10 +139,13 @@ See `references/output-example.md` for a full worked example. The minimum struct
 ## Guidelines
 
 - **单位**：人日 pd，整数或 1 位小数
-- **防虚增**：需求/设计/运维 按模块/项目列一次，不按功能点展开
-- **一句话依据**：每个工作项的复杂度必须有简短理由（哪怕只是"单实体 CRUD"）
-- **假设可见**：不阻塞式提问，改为在 备注 列显式声明假设
-- **NFR 映射**：查 `effort-table.md` 的 NFR 规则，不要新增第 7 类
+- **细粒度拆行**：前端按页面、后端按业务动作、运维按工作项各自拆行
+- **工作内容用业务语言**：后端列严禁出现 `GET/POST/PUT/DELETE` 或 URL 路径；给产品/PM 看
+- **运维至少 2 行**：部署 + 监控 最低配；非平凡项目 3-5 行
+- **需求/设计/测试保持模块级**：1 模块 1 行，工作内容填 `-`
+- **一句话依据**：每个工作项的复杂度必须有简短理由
+- **假设可见**：不阻塞式提问，改为在 备注 列声明假设（`假设：xxx`）
+- **NFR 映射**：查 `effort-table.md` 的 NFR 规则，不新增第 7 类
 - **团队系数保留 2 位小数**（展示），最终工时保留 1 位
-- **buffer 只影响展示层**：详单的每条工时不因 buffer 改变；只有汇总表追加 `风险缓冲` 与 `总计` 两行
+- **buffer 只影响展示层**：详单每行不因 buffer 改变；只有汇总表追加 `风险缓冲` 与 `总计` 行
 - 工作项类型严格使用中文六类：**需求 / 设计 / 前端 / 后端 / 测试 / 运维**

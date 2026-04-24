@@ -3,12 +3,15 @@
 
 Reads a JSON document (same shape as export_excel.py input) from stdin,
 and checks:
-  1. Each detail row has all six required fields and valid values
+  1. Each detail row has required fields (module/type/complexity/effort_pd;
+     work_content required for 前端/后端/运维)
   2. `type` is one of the six allowed categories
   3. `complexity` is one of the three allowed levels
   4. `effort_pd` is a positive number with at most 1 decimal place
   5. Summary = detail grouped by (module, type), totals match
-  6. Report total = sum of detail effort
+  6. 前端/后端/运维 行必须有 work_content（业务语义字符串，非占位 `-`）
+  7. 后端 work_content 禁止出现 HTTP 方法（GET/POST/PUT/DELETE/PATCH）或 URL 路径
+  8. 至少列 2 行 运维
 
 Usage:
   python3 validate.py < data.json
@@ -18,16 +21,29 @@ Exit 0 on success, 1 on validation failure.
 """
 
 import json
+import re
 import sys
 from collections import defaultdict
 
 ALLOWED_TYPES = {"需求", "设计", "前端", "后端", "测试", "运维"}
 ALLOWED_COMPLEXITY = {"简单", "中等", "复杂"}
-DETAIL_REQUIRED = ["module", "feature", "type", "complexity", "effort_pd"]
+
+# Required fields on every detail row
+DETAIL_REQUIRED = ["module", "type", "complexity", "effort_pd"]
+
+# Types whose work_content must be a real business description (not "-")
+GRANULAR_TYPES = {"前端", "后端", "运维"}
+
+# 后端 work_content 禁用正则：HTTP 方法或 URL 路径
+BACKEND_FORBIDDEN = re.compile(
+    r"\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b|/\w+/?|/api/|https?://",
+    re.IGNORECASE,
+)
+
+MIN_DEVOPS_ROWS = 2
 
 
 def _has_one_decimal(v: float) -> bool:
-    # 接受整数或保留 1 位小数（0.5 粒度不强制，但不能出现 0.13 之类的值）
     return abs(round(v, 1) - v) < 1e-9
 
 
@@ -42,6 +58,8 @@ def validate(data: dict) -> list[str]:
     if not isinstance(summary, list):
         errors.append("summary 必须是数组")
         return errors
+
+    devops_rows = 0
 
     for i, row in enumerate(detail, 1):
         for field in DETAIL_REQUIRED:
@@ -64,6 +82,26 @@ def validate(data: dict) -> list[str]:
                 errors.append(f"detail[{i}] effort_pd 必须为整数或保留 1 位小数，当前 {e}")
         else:
             errors.append(f"detail[{i}] effort_pd 必须为数值，当前 {e!r}")
+
+        # work_content 规则
+        wc = (row.get("work_content") or "").strip()
+        if t in GRANULAR_TYPES:
+            if not wc or wc == "-":
+                errors.append(
+                    f"detail[{i}] {t} 行必须填 work_content（前端=页面 / 后端=业务动作 / 运维=工作项），当前为空或 `-`"
+                )
+            elif t == "后端" and BACKEND_FORBIDDEN.search(wc):
+                errors.append(
+                    f"detail[{i}] 后端 work_content={wc!r} 包含 HTTP 方法或 URL；请改用业务语言"
+                    "（如 `新增订单` / `查询订单详情` / `订单状态校验`）"
+                )
+            if t == "运维":
+                devops_rows += 1
+
+    if devops_rows < MIN_DEVOPS_ROWS:
+        errors.append(
+            f"运维 行至少需 {MIN_DEVOPS_ROWS} 行（部署 + 监控 最低配），当前 {devops_rows} 行"
+        )
 
     # Aggregation consistency
     detail_agg = defaultdict(float)

@@ -25,10 +25,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-DETAIL_HEADERS = ["业务模块", "功能点", "工作项类型", "复杂度", "工时(pd)", "备注"]
+DETAIL_HEADERS = ["业务模块", "功能点", "工作项类型", "工作内容", "复杂度", "工时(pd)", "备注"]
 SUMMARY_HEADERS = ["业务模块", "工作项类型", "工时(pd)"]
 
-DETAIL_FIELDS = ["module", "feature", "type", "complexity", "effort_pd", "note"]
+DETAIL_FIELDS = ["module", "feature", "type", "work_content", "complexity", "effort_pd", "note"]
 SUMMARY_FIELDS = ["module", "type", "effort_pd"]
 
 
