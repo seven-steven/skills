@@ -24,6 +24,12 @@
       "skills": [
         "./daily-report"
       ]
+    },
+    {
+      "name": "codefree",
+      "source": "./plugins/codefree",
+      "strict": false,
+      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code."
     }
   ]
 }
