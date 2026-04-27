@@ -84,7 +84,23 @@ fi
    node "$SKILL_SCRIPTS_DIR/cache.mjs" write-commit <repo_root> <latest_commit_hash>
    ```
 
-7. Emit only the validated bullet lines — no preamble, no explanation.
+7. Copy to clipboard:
+
+   ```bash
+   echo '<validated_report>' | node "$SKILL_SCRIPTS_DIR/clipboard.mjs"
+   ```
+
+   Capture the script output:
+   - stdout `已复制到剪贴板（<tool>）` = success
+   - stderr `复制到剪贴板失败：<reason>` = failure
+   - stdout `跳过剪贴板复制` = skipped (`DAILY_REPORT_NO_CLIPBOARD=1`)
+
+   Always proceed to step 8 regardless of outcome — do not abort.
+
+8. Emit the validated bullet lines — no preamble, no explanation. Then append a single short status line based on clipboard.mjs output:
+   - Success: `（已复制到剪贴板）`
+   - Failure: `（剪贴板复制失败：<reason>，请手动复制）`
+   - Skipped: `（已跳过剪贴板复制）`
 
 ## Output Format
 
@@ -126,6 +142,7 @@ After compression (target 40–50% of raw count):
 
 - If `validate.mjs` exits non-zero: read the error output, fix the format, and re-pipe until clean
 - If `cache.mjs` exits non-zero: still produce the report, skip cache persistence, tell the user
+- If `clipboard.mjs` writes to stderr: surface the failure reason to the user but still emit the report
 
 ## Configuration
 
@@ -133,6 +150,7 @@ Cache files live in `~/.claude/skills/daily-report/` (overridable via `DAILY_REP
 
 - `project-name-cache.json` — maps `realpath(repo)` → display project name
 - `commit-cache.json` — maps `realpath(repo)` → last reported commit SHA
+- `DAILY_REPORT_NO_CLIPBOARD=1` — disables auto-copy (useful for CI, headless SSH, or pipeline use)
 
 ## Notes
 

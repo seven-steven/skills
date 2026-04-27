@@ -52,7 +52,37 @@ node scripts/cache.mjs write-commit /path/to/repo <sha>
 
 # 手动验证报告格式
 echo "- MyProject-完成功能；" | node scripts/validate.mjs
+
+# 手动测试剪贴板复制
+echo "- MyProject-完成功能；" | node scripts/clipboard.mjs
 ```
+
+## 自动复制到剪贴板
+
+报告通过格式校验后，自动复制到系统剪贴板，并在输出末尾追加一行状态提示：
+
+```
+- MyProject-用户模块-完成登录、注册功能；
+- MyProject-API模块-修复接口鉴权BUG；
+（已复制到剪贴板）
+```
+
+如果剪贴板工具不可用，会显示失败原因并提示手动复制，**报告仍正常输出**：
+
+```
+- MyProject-用户模块-完成登录、注册功能；
+（剪贴板复制失败：no-tool-found，请手动复制）
+```
+
+**平台支持**：
+
+| 平台          | 所需命令                           | 安装方式          |
+| ------------- | ---------------------------------- | ----------------- |
+| macOS         | `pbcopy`                           | 系统自带          |
+| Windows 10+   | `clip`                             | 系统自带          |
+| WSL           | `clip.exe`（首选）→ Linux 工具兜底 | 系统自带          |
+| Linux Wayland | `wl-copy`                          | `wl-clipboard` 包 |
+| Linux X11     | `xclip` 或 `xsel`                  | 同名包            |
 
 **退出码**：
 
@@ -67,6 +97,11 @@ echo "- MyProject-完成功能；" | node scripts/validate.mjs
 | ------------------------- | ---------------------- | --------------- | ---------------- |
 | `project-name-cache.json` | `realpath(仓库根目录)` | 项目展示名      | 省去每次手动传参 |
 | `commit-cache.json`       | `realpath(仓库根目录)` | 上次 commit SHA | 实现增量报告     |
+
+**环境变量**：
+
+- `DAILY_REPORT_CACHE_DIR` — 覆盖缓存目录路径（用于测试或自定义）
+- `DAILY_REPORT_NO_CLIPBOARD=1` — 禁用自动剪贴板复制（适用于 CI、无图形界面的 SSH 会话、管道场景）
 
 **常见操作**：
 
@@ -128,13 +163,16 @@ daily-report/
 ├── scripts/
 │   ├── cache.mjs            (CLI shim：5 个 action 的命令行入口)
 │   ├── validate.mjs         (CLI shim：从 stdin 读取并验证格式)
+│   ├── clipboard.mjs        (CLI shim：跨平台剪贴板复制)
 │   └── lib/
 │       ├── cache.mjs        (纯函数：JSON 读写、路径标准化、脚本路径解析)
-│       └── validator.mjs    (纯函数：正则校验 + 逐行错误定位)
+│       ├── validator.mjs    (纯函数：正则校验 + 逐行错误定位)
+│       └── clipboard.mjs    (纯函数：平台候选项检测 + 复制逻辑)
 └── tests/
     ├── cache.test.mjs       (16 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir)
     ├── validator.test.mjs   (10 用例：happy / edge / error)
-    └── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
+    ├── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
+    └── clipboard.test.mjs   (15 用例：平台检测 / 复制逻辑 / CLI shim 集成)
 ```
 
 **关键设计决策**：
@@ -150,7 +188,7 @@ daily-report/
 cd skills/daily-report && npm test
 ```
 
-覆盖 32 个用例：缓存 I/O（16）、格式校验（10）、CLI 接线（6）。
+覆盖 47 个用例：缓存 I/O（16）、格式校验（10）、CLI 接线（6）、剪贴板（15）。
 
 ## 限制
 
