@@ -366,15 +366,54 @@ function createMockSocks5Server(opts = {}) {
           if (buf.length < 2) return;
           const nmethods = buf[1];
           if (buf.length < 2 + nmethods) return;
+
+          const methods = buf.slice(2, 2 + nmethods);
+          buf = buf.subarray(2 + nmethods);
+
           if (opts.rejectAuth) {
             client.write(Buffer.from([0x05, 0xff]));
             client.end();
             return;
           }
-          client.write(Buffer.from([0x05, 0x00]));
-          buf = buf.subarray(2 + nmethods); // consume VER + NMETHODS + methods list
+          if (opts.requireAuth) {
+            if (!methods.includes(0x02)) {
+              client.write(Buffer.from([0x05, 0xff]));
+              client.end();
+              return;
+            }
+            client.write(Buffer.from([0x05, 0x02]));
+            state = "auth";
+            // fall through: auth bytes may be in the same chunk
+          } else {
+            client.write(Buffer.from([0x05, 0x00]));
+            state = "connect";
+            // fall through: connect request may be in the same chunk
+          }
+        }
+
+        if (state === "auth") {
+          // RFC 1929: VER(1) ULEN(1) USER(ulen) PLEN(1) PASS(plen)
+          if (buf.length < 2) return;
+          const ulen = buf[1];
+          if (buf.length < 2 + ulen + 1) return;
+          const plen = buf[2 + ulen];
+          if (buf.length < 3 + ulen + plen) return;
+
+          const user = buf.slice(2, 2 + ulen).toString("utf8");
+          const pass = buf.slice(3 + ulen, 3 + ulen + plen).toString("utf8");
+          buf = buf.subarray(3 + ulen + plen);
+
+          const valid =
+            user === opts.requireAuth.username &&
+            pass === opts.requireAuth.password;
+          if (!valid) {
+            client.write(Buffer.from([0x01, 0x01]));
+            client.end();
+            return;
+          }
+          client.write(Buffer.from([0x01, 0x00]));
           state = "connect";
-          // fall through: connect request may be in the same chunk
+          // fall through
         }
 
         if (state === "connect") {
@@ -476,4 +515,56 @@ test("httpGet - rejects on unsupported proxy scheme", async () => {
     }),
     /unsupported proxy scheme/
   );
+});
+
+test("httpGet - authenticates via SOCKS5 USERNAME/PASSWORD when credentials provided", async () => {
+  const target = http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/markdown" });
+    res.end("# via socks5 auth\n");
+  });
+  await new Promise((r) => target.listen(0, "127.0.0.1", r));
+  const targetPort = target.address().port;
+
+  const proxy = await createMockSocks5Server({
+    target: targetPort,
+    requireAuth: { username: "alice", password: "s3cr3t" },
+  });
+  const proxyPort = proxy.address().port;
+
+  try {
+    const result = await httpGet({
+      url: `http://127.0.0.1:${targetPort}/`,
+      proxy: `socks5h://alice:s3cr3t@127.0.0.1:${proxyPort}`,
+      headers: REQUEST_HEADERS,
+      timeoutMs: 5000,
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body, "# via socks5 auth\n");
+  } finally {
+    proxy.closeAllConnections?.();
+    proxy.close();
+    target.closeAllConnections?.();
+    target.close();
+  }
+});
+
+test("httpGet - rejects when SOCKS5 credentials are wrong", async () => {
+  const proxy = await createMockSocks5Server({
+    requireAuth: { username: "alice", password: "s3cr3t" },
+  });
+  const proxyPort = proxy.address().port;
+  try {
+    await assert.rejects(
+      httpGet({
+        url: "http://127.0.0.1:1/",
+        proxy: `socks5h://alice:wrong@127.0.0.1:${proxyPort}`,
+        headers: REQUEST_HEADERS,
+        timeoutMs: 2000,
+      }),
+      /SOCKS5 authentication failed/
+    );
+  } finally {
+    proxy.closeAllConnections?.();
+    proxy.close();
+  }
 });

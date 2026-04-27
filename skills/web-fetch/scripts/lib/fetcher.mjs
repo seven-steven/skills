@@ -189,6 +189,10 @@ function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
       return reject(new Error(`SOCKS5 hostname too long: ${targetHost}`));
     }
 
+    const username = p.username || "";
+    const password = p.password || "";
+    const hasAuth = username.length > 0;
+
     const socket = net.connect({
       host: p.hostname,
       port: Number(p.port) || 1080,
@@ -197,6 +201,18 @@ function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
     let buf = Buffer.alloc(0);
     let state = "greeting";
     let timer;
+
+    function sendConnect() {
+      const portBuf = Buffer.alloc(2);
+      portBuf.writeUInt16BE(targetPort);
+      socket.write(
+        Buffer.concat([
+          Buffer.from([0x05, 0x01, 0x00, 0x03, hostBytes.length]),
+          hostBytes,
+          portBuf,
+        ])
+      );
+    }
 
     const fail = (e) => {
       clearTimeout(timer);
@@ -212,8 +228,12 @@ function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
     socket.on("error", fail);
 
     socket.once("connect", () => {
-      // Greeting: VER=5, NMETHODS=1, METHOD=NO_AUTH(0x00)
-      socket.write(Buffer.from([0x05, 0x01, 0x00]));
+      if (hasAuth) {
+        // Offer NO_AUTH(0x00) + USERNAME/PASSWORD(0x02)
+        socket.write(Buffer.from([0x05, 0x02, 0x00, 0x02]));
+      } else {
+        socket.write(Buffer.from([0x05, 0x01, 0x00]));
+      }
     });
 
     socket.on("data", (chunk) => {
@@ -221,24 +241,45 @@ function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
 
       if (state === "greeting") {
         if (buf.length < 2) return;
-        if (buf[0] !== 0x05 || buf[1] === 0xff) {
+        const chosen = buf[1];
+        if (buf[0] !== 0x05 || chosen === 0xff) {
           return fail(
             new Error(
               `SOCKS5 auth failed: server rejected all methods (0x${buf[1].toString(16)})`
             )
           );
         }
-        // Send CONNECT request: ATYP=DOMAIN (0x03) — let proxy resolve DNS
-        const portBuf = Buffer.alloc(2);
-        portBuf.writeUInt16BE(targetPort);
-        socket.write(
-          Buffer.concat([
-            Buffer.from([0x05, 0x01, 0x00, 0x03, hostBytes.length]),
-            hostBytes,
-            portBuf,
-          ])
-        );
         buf = buf.subarray(2);
+
+        if (chosen === 0x02) {
+          // RFC 1929 USERNAME/PASSWORD sub-negotiation
+          const userBuf = Buffer.from(username, "utf8");
+          const passBuf = Buffer.from(password, "utf8");
+          socket.write(
+            Buffer.concat([
+              Buffer.from([0x01, userBuf.length]),
+              userBuf,
+              Buffer.from([passBuf.length]),
+              passBuf,
+            ])
+          );
+          state = "auth";
+          return;
+        }
+
+        // NO_AUTH chosen — send CONNECT directly
+        sendConnect();
+        state = "connect";
+        return;
+      }
+
+      if (state === "auth") {
+        if (buf.length < 2) return;
+        if (buf[1] !== 0x00) {
+          return fail(new Error("SOCKS5 authentication failed: wrong credentials"));
+        }
+        buf = buf.subarray(2);
+        sendConnect();
         state = "connect";
         return;
       }
