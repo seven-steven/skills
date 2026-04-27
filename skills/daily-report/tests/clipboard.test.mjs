@@ -128,8 +128,37 @@ test("copyToClipboard - spawn called with correct options", () => {
   });
   assert.equal(spawnArgs.length, 1);
   assert.equal(spawnArgs[0].encoding, "utf8");
-  assert.equal(spawnArgs[0].timeout, 2000);
+  assert.equal(spawnArgs[0].timeout, 5000);
   assert.equal(spawnArgs[0].input, "test input");
+  assert.deepEqual(spawnArgs[0].stdio, ["pipe", "ignore", "ignore"]);
+});
+
+test("copyToClipboard - ETIMEDOUT treated as recoverable, advances to next", () => {
+  const calls = [];
+  const mockSpawn = (cmd, _args, _opts) => {
+    calls.push(cmd);
+    if (cmd === "xclip") return { error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }) };
+    return { status: 0 };
+  };
+  const result = copyToClipboard("hello", {
+    spawn: mockSpawn,
+    platform: "linux",
+    release: "6.1.0",
+    env: {},
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.tool, "xsel");
+  assert.ok(result.tried.some((t) => t.includes("xclip") && t.includes("timeout")));
+});
+
+test("copyToClipboard - custom timeout via opts.timeout", () => {
+  const spawnArgs = [];
+  const mockSpawn = (_cmd, _args, opts) => {
+    spawnArgs.push(opts);
+    return { status: 0 };
+  };
+  copyToClipboard("x", { spawn: mockSpawn, platform: "darwin", timeout: 1000 });
+  assert.equal(spawnArgs[0].timeout, 1000);
 });
 
 // ─── integration tests (CLI shim) ────────────────────────────────────────────

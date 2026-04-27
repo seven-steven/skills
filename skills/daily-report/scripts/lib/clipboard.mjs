@@ -33,8 +33,18 @@ export function copyToClipboard(text, opts = {}) {
   const candidates = getClipboardCandidates(opts);
   const tried = [];
   for (const { cmd, args } of candidates) {
-    const r = spawn(cmd, args, { input: text, encoding: "utf8", timeout: 2000 });
+    // wl-copy and xclip fork a background daemon that holds the clipboard
+    // contents; if spawnSync inherits stdout/stderr, it waits for the daemon
+    // to close them and times out. Redirect both to "ignore" so spawnSync
+    // returns as soon as the parent process exits.
+    const r = spawn(cmd, args, {
+      input: text,
+      encoding: "utf8",
+      timeout: opts.timeout ?? 5000,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
     if (r.error?.code === "ENOENT") { tried.push(`${cmd}(missing)`); continue; }
+    if (r.error?.code === "ETIMEDOUT") { tried.push(`${cmd}(timeout)`); continue; }
     if (r.error) { tried.push(`${cmd}(${r.error.code || "error"})`); continue; }
     if (r.status === 0) return { ok: true, tool: cmd, tried };
     tried.push(`${cmd}(exit=${r.status})`);

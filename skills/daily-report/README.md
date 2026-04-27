@@ -172,7 +172,7 @@ daily-report/
     ├── cache.test.mjs       (16 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir)
     ├── validator.test.mjs   (10 用例：happy / edge / error)
     ├── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
-    └── clipboard.test.mjs   (15 用例：平台检测 / 复制逻辑 / CLI shim 集成)
+    └── clipboard.test.mjs   (17 用例：平台检测 / 复制逻辑 / CLI shim 集成)
 ```
 
 **关键设计决策**：
@@ -188,7 +188,7 @@ daily-report/
 cd skills/daily-report && npm test
 ```
 
-覆盖 47 个用例：缓存 I/O（16）、格式校验（10）、CLI 接线（6）、剪贴板（15）。
+覆盖 49 个用例：缓存 I/O（16）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
 
 ## 限制
 
