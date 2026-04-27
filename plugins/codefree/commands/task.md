@@ -1,7 +1,7 @@
 ---
 description: Delegate a coding task to codefree (qwen-code fork) CLI
-argument-hint: "[--resume|--fresh] [--yolo] [--model <name>] [--include-dir <path>] <task description>"
-allowed-tools: Bash(bash:*), AskUserQuestion, Agent
+argument-hint: "[--resume|--fresh] [--yolo] [--model <name>] [--include-dir <path>] [--background] [--wait] [--timeout-ms <ms>] <task description>"
+allowed-tools: Bash(bash:*, node:*), AskUserQuestion, Agent
 ---
 
 Invoke the `codefree:codefree-task` subagent via the `Agent` tool, forwarding the user request as the prompt.
@@ -16,7 +16,7 @@ If `$ARGUMENTS` already contains `--resume` or `--fresh`, skip this section and 
 Otherwise, check for a resumable codefree session:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.sh" task-resume-candidate --json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.mjs" task-resume-candidate --json
 ```
 
 If the result is `{"available":true}`, use `AskUserQuestion` exactly once:
@@ -27,6 +27,16 @@ If the result is `{"available":true}`, use `AskUserQuestion` exactly once:
 - If the user picks **New**: prepend `--fresh` to the prompt forwarded to the subagent.
 
 If the result is `{"available":false}`, forward the request as-is.
+
+## Background mode
+
+If `$ARGUMENTS` contains `--background`, do NOT invoke the subagent. Instead run directly:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.mjs" task --background [flags] <task>
+```
+
+This immediately returns a JSON payload with `jobId` and `status: "queued"`. Report the jobId to the user and advise them to use `/codefree:status` and `/codefree:result` to track progress.
 
 ## Forwarding
 

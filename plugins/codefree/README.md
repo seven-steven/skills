@@ -31,54 +31,99 @@ Inspired by and structured after [openai/codex-plugin-cc](https://github.com/ope
 
 ### `/codefree:task <task description>`
 
-Delegates a coding task to codefree. codefree runs in `auto-edit` mode by default — it applies file edits without prompting, but still asks for approval on shell commands and other higher-risk operations.
+Delegates a coding task to codefree. codefree runs in `auto-edit` mode by default — it applies file edits without prompting, but still asks for approval on shell commands.
 
 ```
 /codefree:task Add input validation to the createUser function
 /codefree:task --yolo Fix all TypeScript errors in src/
 /codefree:task --model qwen3-coder-plus Refactor the auth middleware
-/codefree:task --include-dir ../shared-lib Add shared-lib types to the project
+/codefree:task --background Migrate all API calls to the new client
 ```
 
 **Flags:**
 
-| Flag                    | Description                                                 |
-| ----------------------- | ----------------------------------------------------------- |
-| `--yolo` / `-y`         | Skip all approval prompts (`--approval-mode yolo`)          |
-| `--model <name>` / `-m` | Override the codefree model                                 |
-| `--include-dir <path>`  | Add an extra directory to codefree's workspace (repeatable) |
+| Flag                    | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `--yolo` / `-y`         | Skip all approval prompts (`--approval-mode yolo`)                 |
+| `--model <name>` / `-m` | Override the codefree model                                        |
+| `--include-dir <path>`  | Add an extra directory to codefree's workspace (repeatable)        |
+| `--background`          | Run the task in the background and return a job ID immediately     |
+| `--wait`                | Block until the job finishes (used with `--background` via status) |
+| `--timeout-ms <ms>`     | Timeout for `--wait` polling (default 120 000 ms)                  |
 
-**Environment variable:** set `CODEFREE_BIN` to override the codefree binary path.
+### `/codefree:status [job-id]`
+
+Show active and recent codefree jobs for the current repository.
+
+```
+/codefree:status                          # list all jobs this session
+/codefree:status task-l3xq8z-9k2m1f      # detailed view of one job
+/codefree:status task-l3xq8z-9k2m1f --wait --timeout-ms 60000
+/codefree:status --all                    # include jobs from other sessions
+```
+
+### `/codefree:result [job-id]`
+
+Show the stored final output for a finished codefree job.
+
+```
+/codefree:result                          # latest finished job
+/codefree:result task-l3xq8z-9k2m1f
+```
+
+### `/codefree:cancel [job-id]`
+
+Cancel an active background codefree job.
+
+```
+/codefree:cancel                          # cancel the only active job this session
+/codefree:cancel task-l3xq8z-9k2m1f
+```
+
+## Background mode
+
+For long-running tasks, use `--background` to avoid blocking the main Claude thread:
+
+```
+/codefree:task --background --yolo Add type annotations to all Python files
+# → Queued: task-l3xq8z-9k2m1f
+
+/codefree:status
+# → table showing queued/running jobs
+
+/codefree:status task-l3xq8z-9k2m1f --wait
+# → blocks until done
+
+/codefree:result task-l3xq8z-9k2m1f
+# → full output of the completed task
+```
+
+Jobs are persisted to `${CLAUDE_PLUGIN_DATA}/state/<repo-slug>/` so results survive session restarts.
 
 ## SubAgent
 
-The plugin exposes a `codefree:codefree-task` subagent that other agents, skills, or the main Claude thread can invoke directly — without going through the `/codefree:task` slash command.
-
-### Invocation
+The plugin exposes a `codefree:codefree-task` subagent that other agents, skills, or the main Claude thread can invoke directly:
 
 ```typescript
-// from another skill or the main thread
 Agent({
   subagent_type: "codefree:codefree-task",
-  prompt: "--yolo Add input validation to src/createUser.ts",
+  prompt: "--background --yolo Add type annotations to all Python files",
 });
 ```
 
-### Three invocation paths
-
-| Path                                      | Trigger                           | Use case                                                    |
-| ----------------------------------------- | --------------------------------- | ----------------------------------------------------------- |
-| `/codefree:task ...`                      | User types the command            | One-off manual delegation                                   |
-| `Agent("codefree:codefree-task", ...)`    | Main thread LLM decides           | Programmatic delegation based on project CLAUDE.md strategy |
-| Another skill's body calling `Agent(...)` | A higher-level skill orchestrates | codefree as a step in a larger workflow                     |
-
 ### Who decides when to use codefree
 
-The subagent is neutral — it does not hard-code any policy about "what tasks are appropriate for codefree". That decision lives with the caller:
+The subagent is neutral — it does not hard-code any policy about what tasks are appropriate for codefree. That decision lives with the caller:
 
-- **User-level**: add a rule in `~/.claude/CLAUDE.md` (e.g. "for mechanical refactors, delegate to `codefree:codefree-task`")
+- **User-level**: add a rule in `~/.claude/CLAUDE.md`
 - **Project-level**: add a rule in the project's `CLAUDE.md`
-- **Skill-level**: an orchestrating skill can explicitly call `Agent("codefree:codefree-task", ...)` as one of its steps
+- **Skill-level**: an orchestrating skill can explicitly call `Agent("codefree:codefree-task", ...)`
+
+## Environment
+
+| Variable       | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `CODEFREE_BIN` | Override the codefree binary name/path (default: `codefree`) |
 
 ## License
 
