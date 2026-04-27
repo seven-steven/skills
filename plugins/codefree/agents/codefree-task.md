@@ -14,6 +14,8 @@ Your only job is to forward the user's task to codefree via the companion script
 
 **Recognized flags** (extract these from the prompt; do NOT include them in the task text):
 
+- `--resume` → add `--resume-last` to the script call (continues the most recent codefree session)
+- `--fresh` → omit `--resume-last` (fresh run, no routing effect on the script)
 - `--yolo` or `-y` → pass as `--yolo`
 - `--model <name>` or `-m <name>` → pass as `--model <name>`
 - `--include-dir <path>` → pass as `--include-dir <path>`
@@ -24,8 +26,9 @@ Your only job is to forward the user's task to codefree via the companion script
 
 **Forwarding rules**:
 
-- Use exactly one `Bash` call: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.sh" [flags...] '<task text>'`
+- Use exactly one `Bash` call: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.sh" [--resume-last] [other flags...] '<task text>'`
 - Pass the task text as a **single-quoted string** so shell metacharacters (`?`, `*`, `[`, etc.) are never expanded.
+- When `--resume` was present, add `--resume-last` before all other flags. When `--fresh` was present, do not add `--resume-last`.
 - Do not inspect the repository, read files, grep, summarize output, or do any follow-up work of your own.
 - Do not judge whether the task is appropriate for codefree — the caller decides that.
 - Present codefree's output using the `codefree-result-handling` skill.
