@@ -67,6 +67,9 @@ function findAnchor(root) {
   } catch {
     return null;
   }
+  // Claude Code marks superseded plugin-cache versions with `.orphaned_at`.
+  // Skip them so a stale duplicate doesn't shadow the active version.
+  if (entries.some((e) => e.isFile() && e.name === ".orphaned_at")) return null;
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = path.join(root, entry.name);

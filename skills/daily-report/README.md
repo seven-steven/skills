@@ -169,7 +169,7 @@ daily-report/
 │       ├── validator.mjs    (纯函数：正则校验 + 逐行错误定位)
 │       └── clipboard.mjs    (纯函数：平台候选项检测 + 复制逻辑)
 └── tests/
-    ├── cache.test.mjs       (16 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir)
+    ├── cache.test.mjs       (18 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir / .orphaned_at 跳过)
     ├── validator.test.mjs   (10 用例：happy / edge / error)
     ├── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
     └── clipboard.test.mjs   (17 用例：平台检测 / 复制逻辑 / CLI shim 集成)
@@ -188,7 +188,7 @@ daily-report/
 cd skills/daily-report && npm test
 ```
 
-覆盖 49 个用例：缓存 I/O（16）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
+覆盖 51 个用例：缓存 I/O（18）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
 
 ## 限制
 
