@@ -29,7 +29,7 @@
       "name": "codefree",
       "source": "./plugins/codefree",
       "strict": false,
-      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code."
+      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code. Must be used whenever the user mentions '研发云'."
     }
   ]
 }
