@@ -1,0 +1,6 @@
+{
+  "name": "codefree",
+  "version": "0.1.0",
+  "description": "Delegate coding tasks to codefree CLI from inside Claude Code.",
+  "author": { "name": "Seven" }
+}
