@@ -5,7 +5,7 @@
 - [CRITICAL] Write SKILLs in English
 - [CRITICAL] Add sufficient metadata to SKILLs to ensure a good user experience
 - [CRITICAL] Synchronously update the @.claude-plugin/marketplace.json file when creating or deleting a skill
-- [SHOULD] Use scripts whenever possible to make SKILL behavior deterministic
+- [SHOULD] Use Node.js scripts whenever possible to make SKILL behavior deterministic
 
 ## References
 
