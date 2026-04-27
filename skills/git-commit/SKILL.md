@@ -1,31 +1,55 @@
 ---
 name: git-commit
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*)
-description: 提交 git 代码变更。当用户提到"提交代码"、"git commit"、"commit changes"、"提交变更"或需要根据当前 git 状态生成 commit message 时触发。
-argument-hint: <append message> （可选参数，会被追加到生成的 commit message 中）
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git commit:*), Bash(node:*)
+description: >-
+  提交 git 代码变更。当用户提到"提交代码"、"git commit"、"commit changes"、"提交变更"或需要根据当前 git 状态生成 commit message 时触发。
+argument-hint: <append message> (optional, appended to the generated subject)
 ---
 
 ## Context
 
-- Current git status: !`git status`
-- Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
+- Git status: !`git status`
+- Staged and unstaged diff: !`git diff HEAD`
 - Recent commits: !`git log --oneline -10`
-- current session work content
+- Current session work content
 
-## Your task
+## Path Resolution
 
-Based on the above changes and chat history, create a single git commit for **current work content**.
+This skill bundles a Node.js validator under its installation directory. Before
+running anything, resolve the absolute path of the `scripts/` directory and
+store it as `$SKILL_SCRIPTS_DIR`:
 
-You have the capability to call multiple tools in a single response. Stage and create the commit using a single message. Do not use any other tools or do anything else. Do not send any other text or messages besides these tool calls.
+1. Try relative path `scripts/` first (works for project-level installs).
+2. If that fails, search for the anchor file `validate.mjs` under:
+   - `~/.claude/plugins/cache/**/git-commit/scripts/validate.mjs` (global plugin install)
+   - `<plugin-source>/skills/git-commit/scripts/validate.mjs` (project-level install via marketplace)
+3. Use the resolved path in every command below.
 
-You should always use **Angular Style Commit Message format**, which is: `<type>(<scope>): <subject>`
+## Steps
 
-If user provided <append message>, append it to the <subject> part of the generated commit message.
+1. Resolve `$SKILL_SCRIPTS_DIR` per **Path Resolution**.
+2. Stage files that are relevant to the current session's work. Ask when scope is unclear.
+3. Compose an Angular-format commit message: `<type>(<scope>): <subject>`.
+   - If user provided `<append message>`, append it to the subject.
+   - Add a blank-line-separated body if the change needs explanation.
+4. Validate the message:
+   ```
+   printf '%s' "<message>" | node "$SKILL_SCRIPTS_DIR/validate.mjs"
+   ```
+   If it exits non-zero, read the stderr errors, revise the message, and retry.
+   Repeat up to 3 times; if still failing, ask the user for guidance.
+5. Commit using a HEREDOC to handle multi-line messages:
+   ```
+   git commit -m "$(cat <<'EOF'
+   <message>
+   EOF
+   )"
+   ```
 
 ## Constitution
 
-- Write commit message in user's preferred language.
-- Don't add `Co-Authored-By` content in commit message。
-- Only stage and commit files that are relevant to the current session's work. Ignore unrelated or stale changes unless the user **explicitly** requests them. When in doubt, ask which files to include rather than assuming scope.
-- If the current session / git working tree contains a large amount of changes, split them atomically into multiple commits by different tasks / purposes. Each commit should represent a single logical change with a coherent scope, rather than bundling unrelated work together.
+- Write the commit message body in the user's preferred language; keep the `<type>(<scope>): <subject>` header in English.
+- Never include `Co-Authored-By` trailers.
+- Stage only files related to the current session's work; ask when in doubt rather than assuming scope.
+- For large change sets, split into atomic commits grouped by coherent purpose. Each commit should represent a single logical unit, not a bundle of unrelated work.
