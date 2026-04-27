@@ -30,6 +30,15 @@
       "source": "./plugins/codefree",
       "strict": false,
       "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code. Must be used whenever the user mentions '研发云'."
+    },
+    {
+      "name": "web-fetch",
+      "source": "./skills",
+      "strict": false,
+      "description": "Fetch a URL and return clean Markdown via r.jina.ai → markdown.new → defuddle.md fallback chain, with optional WEB_FETCH_PROXY proxy support",
+      "skills": [
+        "./web-fetch"
+      ]
     }
   ]
 }
