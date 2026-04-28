@@ -4,14 +4,14 @@
     "name": "seven-steven"
   },
   "metadata": {
-    "description": "A collection of AI agent skills for software development"
+    "description": "AI 智能体技能集合，用于软件开发辅助"
   },
   "plugins": [
     {
       "name": "git-commit",
       "source": "./skills",
       "strict": false,
-      "description": "Create a git commit with staged changes",
+      "description": "根据暂存的变更生成 git commit 并提交",
       "skills": [
         "./git-commit"
       ]
@@ -20,7 +20,7 @@
       "name": "daily-report",
       "source": "./skills",
       "strict": false,
-      "description": "Generate daily work report from git commit history",
+      "description": "从 git 提交历史生成工作日报",
       "skills": [
         "./daily-report"
       ]
@@ -29,7 +29,7 @@
       "name": "web-fetch",
       "source": "./skills",
       "strict": false,
-      "description": "Fetch a URL and return clean Markdown via r.jina.ai → markdown.new → defuddle.md fallback chain, with optional WEB_FETCH_PROXY proxy support",
+      "description": "通过 r.jina.ai → markdown.new → defuddle.md 回退链获取 URL 并返回干净的 Markdown，支持 WEB_FETCH_PROXY 代理",
       "skills": [
         "./web-fetch"
       ]
@@ -38,7 +38,7 @@
       "name": "codefree",
       "source": "./plugins/codefree",
       "strict": false,
-      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code. Must be used whenever the user mentions '研发云'."
+      "description": "在 Claude Code 内将编码任务委托给 codefree（qwen-code fork）CLI 执行。用户提到"研发云"时必须使用。"
     }
   ]
 }

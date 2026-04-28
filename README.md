@@ -1,37 +1,37 @@
 # seven-skills
 
-A collection of AI agent skills for software development.
+AI 智能体技能集合，用于软件开发辅助。
 
-## Skills Library
+## 技能库
 
 ### Git
 
-**git-commit** — Create git commits with Angular-style commit messages from staged changes
+**git-commit** — 根据暂存的变更生成 Angular 风格的 git commit 消息并提交
 
-### Reporting
+### 报告
 
-**daily-report** — Generate daily work report from today's git commit history (supports project name caching and business module grouping)
+**daily-report** — 从今日 git 提交历史生成工作日报（支持项目名称缓存与业务模块分组）
 
-## Installation
+## 安装
 
-### Claude Code (via Plugin Marketplace)
+### Claude Code（通过插件市场）
 
-Register the marketplace first:
+首先注册插件市场：
 
 ```
 /plugin marketplace add seven-steven/skills
 ```
 
-Then install plugins from this marketplace:
+然后从该市场安装插件：
 
 ```
 /plugin install git-commit@seven-skills
 /plugin install daily-report@seven-skills
 ```
 
-**Updating**
+**更新**
 
-Skills update automatically when you update the plugin:
+技能会随插件更新自动升级：
 
 ```
 /plugin update git-commit
@@ -41,24 +41,24 @@ Skills update automatically when you update the plugin:
 ### npx skills
 
 ```bash
-# List skills in this repository
+# 列出仓库中的技能
 npx skills add seven-steven/skills --list
 
-# Install specific skills
+# 安装指定技能
 npx skills add seven-steven/skills --skill git-commit --skill daily-report
 
-# Install to specific agents
+# 安装到指定智能体
 npx skills add seven-steven/skills -a claude-code -a opencode
 
-# Non-interactive installation (CI/CD friendly)
+# 非交互式安装（适用于 CI/CD）
 npx skills add seven-steven/skills --skill git-commit -g -a claude-code -y
 
-# Install all skills from this repo to all agents
+# 安装该仓库的所有技能到所有智能体
 npx skills add seven-steven/skills --all
 
-# Install all skills to specific agents
+# 安装所有技能到指定智能体
 npx skills add seven-steven/skills --skill '*' -a claude-code
 
-# Install specific skills to all agents
+# 安装指定技能到所有智能体
 npx skills add seven-steven/skills --agent '*' --skill git-commit
 ```
