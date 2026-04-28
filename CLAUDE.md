@@ -4,7 +4,7 @@
 
 ### constitution
 
-- Write skills.md/commands.md in English, Other readme/design documents in Chinese.
+- Write skills.md/commands.md content in English(Description can be Chinese), Other readme/design documents in Chinese.
 - Add sufficient metadata to SKILLs to ensure a good user experience
 - Use `/skill-creator` to create or modify skills — never hand-write skill files
 - Synchronously update the @.claude-plugin/marketplace.json file when creating or deleting a skill

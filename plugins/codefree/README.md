@@ -1,19 +1,19 @@
 # codefree-plugin-cc
 
-A Claude Code plugin that wraps the [codefree-cli](https://www.srdcloud.cn/helpcenter/content?id=1443287380026744832&versionType=1) CLI (a qwen-code-based AI coding tool), enabling task delegation from inside a Claude Code session.
+一个 Claude Code 插件，封装了 [codefree-cli](https://www.srdcloud.cn/helpcenter/content?id=1443287380026744832&versionType=1)（基于 qwen-code 的 AI 编码工具），允许在 Claude Code 会话中直接将编码任务委派给 codefree。
 
-Inspired by and structured after [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc).
+灵感来源并参照 [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc) 的结构设计。
 
-## Requirements
+## 依赖
 
-- [Claude Code](https://claude.ai/code) installed
-- [codefree-cli](https://www.srdcloud.cn/helpcenter/content?id=1443287380026744832&versionType=1) CLI installed and authenticated
+- 已安装 [Claude Code](https://claude.ai/code)
+- 已安装并完成认证的 [codefree-cli](https://www.srdcloud.cn/helpcenter/content?id=1443287380026744832&versionType=1)
 
-## Commands
+## 命令
 
-### `/codefree:task <task description>`
+### `/codefree:task <任务描述>`
 
-Delegates a coding task to codefree. codefree runs in `auto-edit` mode by default — it applies file edits without prompting, but still asks for approval on shell commands.
+将编码任务委派给 codefree。codefree 默认以 `auto-edit` 模式运行——直接应用文件修改无需确认，但在执行 shell 命令前仍会请求审批。
 
 ```
 /codefree:task Add input validation to the createUser function
@@ -23,70 +23,70 @@ Delegates a coding task to codefree. codefree runs in `auto-edit` mode by defaul
 /codefree:task --resume Continue the previous codefree session
 ```
 
-**Flags:**
+**参数标志：**
 
-| Flag                    | Description                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| `--resume`              | Continue the most recent codefree session (omit to always start a fresh session)     |
-| `--yolo` / `-y`         | Skip all approval prompts (`--approval-mode yolo`)                                   |
-| `--model <name>` / `-m` | Override the codefree model                                                          |
-| `--include-dir <path>`  | Add an extra directory to codefree's workspace (repeatable)                          |
-| `--background`          | Run the task in the background and return a job ID immediately                       |
-| `--wait`                | Block until the job finishes (can be combined with `--background` or used in status) |
-| `--timeout-ms <ms>`     | Timeout for `--wait` polling (default 120 000 ms)                                    |
+| 标志                    | 说明                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `--resume`              | 继续最近一次的 codefree 会话（不加此标志则每次新开会话）                     |
+| `--yolo` / `-y`         | 跳过所有审批提示（`--approval-mode yolo`）                                   |
+| `--model <name>` / `-m` | 覆盖 codefree 使用的模型                                                     |
+| `--include-dir <path>`  | 为 codefree 的工作区额外添加目录（可重复使用）                               |
+| `--background`          | 在后台运行任务，立即返回任务 ID                                              |
+| `--wait`                | 阻塞直到任务完成（可与 `--background` 结合使用，或在 status 命令中单独使用） |
+| `--timeout-ms <ms>`     | `--wait` 轮询的超时时间（默认 120 000 ms）                                   |
 
 ### `/codefree:status [job-id]`
 
-Show active and recent codefree jobs for the current repository.
+显示当前仓库中活跃及最近的 codefree 任务。
 
 ```
-/codefree:status                          # list all jobs this session
-/codefree:status task-l3xq8z-9k2m1f      # detailed view of one job
+/codefree:status                          # 列出本会话所有任务
+/codefree:status task-l3xq8z-9k2m1f      # 查看单个任务详情
 /codefree:status task-l3xq8z-9k2m1f --wait --timeout-ms 60000
-/codefree:status --all                    # include jobs from other sessions
+/codefree:status --all                    # 包含其他会话的任务
 ```
 
 ### `/codefree:result [job-id]`
 
-Show the stored final output for a finished codefree job.
+显示已完成的 codefree 任务的最终输出。
 
 ```
-/codefree:result                          # latest finished job
+/codefree:result                          # 最近一个已完成的任务
 /codefree:result task-l3xq8z-9k2m1f
 ```
 
 ### `/codefree:cancel [job-id]`
 
-Cancel an active background codefree job.
+取消一个活跃的后台 codefree 任务。
 
 ```
-/codefree:cancel                          # cancel the only active job this session
+/codefree:cancel                          # 取消本会话中唯一活跃的任务
 /codefree:cancel task-l3xq8z-9k2m1f
 ```
 
-## Background mode
+## 后台模式
 
-For long-running tasks, use `--background` to avoid blocking the main Claude thread:
+对于耗时较长的任务，使用 `--background` 可避免阻塞主 Claude 线程：
 
 ```
 /codefree:task --background --yolo Add type annotations to all Python files
 # → Queued: task-l3xq8z-9k2m1f
 
 /codefree:status
-# → table showing queued/running jobs
+# → 显示排队/运行中任务的列表
 
 /codefree:status task-l3xq8z-9k2m1f --wait
-# → blocks until done
+# → 阻塞直到任务完成
 
 /codefree:result task-l3xq8z-9k2m1f
-# → full output of the completed task
+# → 输出已完成任务的完整内容
 ```
 
-Jobs are persisted to `${CLAUDE_PLUGIN_DATA}/state/<repo-slug>/` so results survive session restarts.
+任务状态持久化到 `${CLAUDE_PLUGIN_DATA}/state/<repo-slug>/`，会话重启后仍可查看结果。
 
 ## SubAgent
 
-The plugin exposes a `codefree:codefree-task` subagent that other agents, skills, or the main Claude thread can invoke directly:
+本插件暴露了一个 `codefree:codefree-task` subagent，供其他 agent、skill 或主 Claude 线程直接调用：
 
 ```typescript
 Agent({
@@ -95,27 +95,27 @@ Agent({
 });
 ```
 
-### Who decides when to use codefree
+### 由谁决定何时使用 codefree
 
-The subagent is neutral — it does not hard-code any policy about what tasks are appropriate for codefree. That decision lives with the caller:
+subagent 本身不内置任何关于"哪类任务适合交给 codefree"的策略，该决策由调用方负责：
 
-- **User-level**: add a rule in `~/.claude/CLAUDE.md`
-- **Project-level**: add a rule in the project's `CLAUDE.md`
-- **Skill-level**: an orchestrating skill can explicitly call `Agent("codefree:codefree-task", ...)`
+- **用户级**：在 `~/.claude/CLAUDE.md` 中添加规则
+- **项目级**：在项目的 `CLAUDE.md` 中添加规则
+- **Skill 级**：编排型 skill 可以显式调用 `Agent("codefree:codefree-task", ...)`
 
-## Environment
+## 环境变量
 
-| Variable       | Description                                                                                                                                                                              |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CODEFREE_BIN` | Override the codefree binary name or absolute path (default: `codefree`). On Windows, prefer an absolute path including extension, e.g. `C:\Users\you\AppData\Roaming\npm\codefree.cmd`. |
+| 变量           | 说明                                                                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CODEFREE_BIN` | 覆盖 codefree 的二进制名称或绝对路径（默认：`codefree`）。在 Windows 上建议使用包含扩展名的绝对路径，例如 `C:\Users\you\AppData\Roaming\npm\codefree.cmd`。 |
 
-## Windows notes
+## Windows 注意事项
 
-The plugin uses an explicit binary resolver that probes PATHEXT (`.COM;.EXE;.BAT;.CMD;.PS1`) so npm-installed `.cmd` shims are found automatically. You do not need to set `CODEFREE_BIN` unless codefree lives outside your PATH.
+本插件使用显式的二进制解析器，会探测 PATHEXT（`.COM;.EXE;.BAT;.CMD;.PS1`），因此通过 npm 安装的 `.cmd` 包装脚本可被自动找到，无需设置 `CODEFREE_BIN`（除非 codefree 不在 PATH 中）。
 
-When codefree resolves to a `.cmd` or `.bat` file, Node invokes it through `cmd.exe` (`shell: true`). In that case, `&`, `|`, `>`, `<`, `^`, `(`, `)`, `%`, and `!` in the task prompt may be interpreted as cmd.exe metacharacters. Node's spawn quoting (post-CVE-2024-27980) handles the common cases, but prompts mixing these characters with unbalanced quotes may behave unexpectedly. Workaround: rephrase the prompt, or install codefree as an `.exe` so it is spawned directly without a shell.
+当 codefree 解析为 `.cmd` 或 `.bat` 文件时，Node 会通过 `cmd.exe`（`shell: true`）调用它。此时，任务提示词中的 `&`、`|`、`>`、`<`、`^`、`(`、`)`、`%` 和 `!` 可能被 cmd.exe 解释为元字符。Node 的 spawn 引号处理（CVE-2024-27980 修复后）已覆盖常见情况，但包含上述字符与不匹配引号的提示词可能出现意外行为。解决方法：改写提示词措辞，或将 codefree 安装为 `.exe` 以直接 spawn 而不经过 shell。
 
-Output from codefree is captured as UTF-8 regardless of the host code page. The plugin sets `child.stdout`/`child.stderr` encoding to `utf8` after spawn, so multi-byte (CJK, emoji) output is reconstructed correctly even when split across pipe chunks.
+无论宿主机代码页如何，codefree 的输出均以 UTF-8 捕获。插件在 spawn 后将 `child.stdout`/`child.stderr` 的编码设置为 `utf8`，因此多字节字符（汉字、emoji）即使跨 pipe chunk 分割也能正确还原。
 
 ## License
 
