@@ -25,7 +25,6 @@ plugins/codefree/
 │   └── codefree-result-handling/SKILL.md
 ├── scripts/
 │   ├── codefree-companion.mjs   # 主调度器（~400L）
-│   ├── codefree-companion.sh    # 旧版兼容（待删除）
 │   └── lib/
 │       ├── state.mjs            # JSON 持久化状态
 │       ├── tracked-jobs.mjs     # Job CRUD + session 隔离

@@ -26,12 +26,6 @@
       ]
     },
     {
-      "name": "codefree",
-      "source": "./plugins/codefree",
-      "strict": false,
-      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code. Must be used whenever the user mentions '研发云'."
-    },
-    {
       "name": "web-fetch",
       "source": "./skills",
       "strict": false,
@@ -39,6 +33,12 @@
       "skills": [
         "./web-fetch"
       ]
+    },
+    {
+      "name": "codefree",
+      "source": "./plugins/codefree",
+      "strict": false,
+      "description": "Delegate coding tasks to codefree (qwen-code fork) CLI from inside Claude Code. Must be used whenever the user mentions '研发云'."
     }
   ]
 }
