@@ -74,7 +74,12 @@ test("normalizeKey - resolves a real path (symlink → target)", () => {
     const target = path.join(dir, "real");
     const link = path.join(dir, "link");
     fs.mkdirSync(target);
-    fs.symlinkSync(target, link);
+    try {
+      fs.symlinkSync(target, link);
+    } catch (err) {
+      if (err.code === "EPERM") return; // Windows without Developer Mode rejects symlink creation
+      throw err;
+    }
     assert.equal(normalizeKey(link), fs.realpathSync(target));
   });
 });

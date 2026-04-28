@@ -201,6 +201,15 @@ test("clipboard.mjs - no clipboard tool on PATH exits 0 with failure message", (
 });
 
 test("clipboard.mjs - fake xclip on PATH copies successfully with Chinese text", () => {
+  const input = "- TestProj-完成功能；\n";
+  if (process.platform === "win32") {
+    // On Windows, clipboard.mjs uses the real clip.exe (shell scripts are not executable).
+    // Verify the happy path: success message in stdout, exit 0.
+    const r = runClipboard([], { input });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stdout.includes("已复制到剪贴板"), `stdout: ${r.stdout}`);
+    return;
+  }
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dr-clipboard-"));
   const captureFile = path.join(tmpDir, "captured.txt");
   const fakeXclip = path.join(tmpDir, "xclip");
@@ -210,7 +219,6 @@ test("clipboard.mjs - fake xclip on PATH copies successfully with Chinese text",
       `#!/bin/sh\ncat > ${captureFile}\n`,
       { mode: 0o755 }
     );
-    const input = "- TestProj-完成功能；\n";
     const r = runClipboard([], {
       input,
       env: {
