@@ -39,12 +39,9 @@ store it as `$SKILL_SCRIPTS_DIR`:
    ```
    If it exits non-zero, read the stderr errors, revise the message, and retry.
    Repeat up to 3 times; if still failing, ask the user for guidance.
-5. Commit using a HEREDOC to handle multi-line messages:
+5. Commit via stdin:
    ```
-   git commit -m "$(cat <<'EOF'
-   <message>
-   EOF
-   )"
+   printf '%s' "<message>" | node "$SKILL_SCRIPTS_DIR/commit.mjs"
    ```
 
 ## Constitution

@@ -71,13 +71,16 @@ Bash(node:*)
 
 ```
 SKILL.md
-└── Step 4: printf '%s' "<msg>" | node $SKILL_SCRIPTS_DIR/validate.mjs
-    └── scripts/validate.mjs              # CLI 入口（argv / stdin）
-        └── scripts/lib/commit-message.mjs
-            ├── normalize(text)           # BOM / CRLF / trailing-newline 清洗
-            ├── parseMessage(text)        # → { subject, body, trailers }
-            ├── validateMessage(text)     # → { ok, errors[], parsed? }
-            └── formatErrorReport(errs)  # 格式化错误列表给 stderr
+├── Step 4: printf '%s' "<msg>" | node $SKILL_SCRIPTS_DIR/validate.mjs
+│   └── scripts/validate.mjs              # CLI 入口（argv / stdin）
+│       └── scripts/lib/commit-message.mjs
+│           ├── normalize(text)           # BOM / CRLF / trailing-newline 清洗
+│           ├── parseMessage(text)        # → { subject, body, trailers }
+│           ├── validateMessage(text)     # → { ok, errors[], parsed? }
+│           └── formatErrorReport(errs)  # 格式化错误列表给 stderr
+└── Step 5: printf '%s' "<msg>" | node $SKILL_SCRIPTS_DIR/commit.mjs
+    └── scripts/commit.mjs               # 从 stdin 读 message，验证后 git commit -F <tmpfile>
+        └── scripts/lib/commit-message.mjs  # 复用同一校验函数，不重复实现
 ```
 
 验证流程：
@@ -87,6 +90,7 @@ SKILL.md
 3. 调用 `validateMessage`，返回 `{ ok, errors }`
 4. 合法 → exit 0；非法 → 输出错误到 stderr，exit 1
 5. SKILL.md 读取 stderr 修订消息后重试，最多 3 次
+6. 消息通过校验后，`commit.mjs` 写入临时文件，执行 `git commit -F <tmpfile>`，完成后删除临时文件
 
 ## 测试
 
@@ -94,7 +98,7 @@ SKILL.md
 cd skills/git-commit && npm test
 ```
 
-覆盖 34 个用例：`parseMessage` 解析（6）、常量（2）、`validateMessage` 通过（6）、`validateMessage` 错误（14）、`formatErrorReport`（2）、CLI 退出码（6）。
+覆盖 41 个用例：`parseMessage` 解析（6）、常量（2）、`validateMessage` 通过（6）、`validateMessage` 错误（14）、`formatErrorReport`（2）、`validate-cli` 退出码（6）、`commit-cli`（7）。
 
 ## 限制
 
