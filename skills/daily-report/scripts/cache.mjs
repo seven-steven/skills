@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readProject, writeProject, readCommit, writeCommit, resolveScriptsDir } from "./lib/cache.mjs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +14,7 @@ if (!action) {
 if (action === "resolve") {
   const scriptsDir = resolveScriptsDir({
     searchRoots: [
-      path.join(process.env.HOME || "", ".claude", "plugins", "cache"),
+      path.join(os.homedir(), ".claude", "plugins", "cache"),
       process.cwd(),
     ],
   });
