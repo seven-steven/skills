@@ -23,7 +23,7 @@ import {
   resolveResultJob,
   sortJobsNewestFirst
 } from "./lib/job-control.mjs";
-import { terminateProcessTree } from "./lib/process.mjs";
+import { terminateProcessTree, needsShellForBinary, resolveBinaryPath } from "./lib/process.mjs";
 import {
   renderCancelReport,
   renderJobStatusReport,
@@ -111,12 +111,28 @@ async function executeCodefreeRun({ cwd, prompt, approvalMode, model, includeDir
   }
 
   return new Promise((resolve) => {
-    const child = spawn(CODEFREE_BIN, argv, {
+    const resolved = resolveBinaryPath(CODEFREE_BIN);
+    if (resolved === null) {
+      resolve({
+        exitStatus: 127,
+        payload: { rawOutput: "", stderr: `codefree binary not found on PATH (CODEFREE_BIN=${CODEFREE_BIN})` },
+        rendered: `Failed to start codefree: not found on PATH (CODEFREE_BIN=${CODEFREE_BIN})`,
+        summary: "failed (binary not found)"
+      });
+      return;
+    }
+
+    const useShell = needsShellForBinary(resolved);
+    const child = spawn(resolved, argv, {
       cwd,
-      env: process.env,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", LANG: process.env.LANG ?? "C.UTF-8" },
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      shell: useShell
     });
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
 
     const stdoutLines = [];
     const stderrLines = [];
@@ -128,8 +144,7 @@ async function executeCodefreeRun({ cwd, prompt, approvalMode, model, includeDir
     });
 
     child.stderr.on("data", (chunk) => {
-      const text = String(chunk);
-      stderrLines.push(text);
+      stderrLines.push(chunk);
     });
 
     child.on("close", (code) => {

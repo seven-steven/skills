@@ -9,13 +9,13 @@ import {
 } from "../scripts/lib/process.mjs";
 
 test("runCommand - captures stdout from echo-ish command", () => {
-  const result = runCommand(process.execPath, ["-e", "process.stdout.write('hi')"]);
+  const result = runCommand("node", ["-e", "process.stdout.write('hi')"]);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, "hi");
 });
 
 test("runCommand - non-zero exit reflected in status", () => {
-  const result = runCommand(process.execPath, ["-e", "process.exit(3)"]);
+  const result = runCommand("node", ["-e", "process.exit(3)"]);
   assert.equal(result.status, 3);
 });
 
@@ -25,7 +25,7 @@ test("binaryAvailable - reports unavailable when binary missing", () => {
 });
 
 test("binaryAvailable - reports available for node", () => {
-  const result = binaryAvailable(process.execPath, ["--version"]);
+  const result = binaryAvailable("node", ["--version"]);
   assert.equal(result.available, true);
 });
 

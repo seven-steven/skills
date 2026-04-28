@@ -85,6 +85,22 @@ main();
 `;
 
 export function installFakeCodefree(fakeBinDir) {
+  if (process.platform === "win32") {
+    // On Windows, spawn cannot directly execute a shebang'd extensionless file.
+    // Write the fixture body as an importable .mjs and a .cmd shim that calls it
+    // via node so the binary resolver can find "codefree.cmd" through PATHEXT.
+    const implPath = path.join(fakeBinDir, "codefree-impl.mjs");
+    fs.writeFileSync(implPath, FIXTURE_TEMPLATE, "utf8");
+
+    const nodeBin = process.execPath.replace(/\\/g, "\\\\");
+    const implEscaped = implPath.replace(/\\/g, "\\\\");
+    const cmdBody = `@echo off\r\n"${nodeBin}" "${implEscaped}" %*\r\n`;
+    const cmdPath = path.join(fakeBinDir, "codefree.cmd");
+    fs.writeFileSync(cmdPath, cmdBody, "utf8");
+    return cmdPath;
+  }
+
+  // POSIX: extensionless executable with shebang
   const binPath = path.join(fakeBinDir, "codefree");
   writeExecutable(binPath, FIXTURE_TEMPLATE);
   return binPath;

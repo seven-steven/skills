@@ -121,9 +121,17 @@ The subagent is neutral — it does not hard-code any policy about what tasks ar
 
 ## Environment
 
-| Variable       | Description                                                  |
-| -------------- | ------------------------------------------------------------ |
-| `CODEFREE_BIN` | Override the codefree binary name/path (default: `codefree`) |
+| Variable       | Description                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------- |
+| `CODEFREE_BIN` | Override the codefree binary name or absolute path (default: `codefree`). On Windows, prefer an absolute path including extension, e.g. `C:\Users\you\AppData\Roaming\npm\codefree.cmd`. |
+
+## Windows notes
+
+The plugin uses an explicit binary resolver that probes PATHEXT (`.COM;.EXE;.BAT;.CMD;.PS1`) so npm-installed `.cmd` shims are found automatically. You do not need to set `CODEFREE_BIN` unless codefree lives outside your PATH.
+
+When codefree resolves to a `.cmd` or `.bat` file, Node invokes it through `cmd.exe` (`shell: true`). In that case, `&`, `|`, `>`, `<`, `^`, `(`, `)`, `%`, and `!` in the task prompt may be interpreted as cmd.exe metacharacters. Node's spawn quoting (post-CVE-2024-27980) handles the common cases, but prompts mixing these characters with unbalanced quotes may behave unexpectedly. Workaround: rephrase the prompt, or install codefree as an `.exe` so it is spawned directly without a shell.
+
+Output from codefree is captured as UTF-8 regardless of the host code page. The plugin sets `child.stdout`/`child.stderr` encoding to `utf8` after spawn, so multi-byte (CJK, emoji) output is reconstructed correctly even when split across pipe chunks.
 
 ## License
 

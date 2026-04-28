@@ -2,9 +2,10 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SCRIPT_PATH = path.resolve(
-  new URL(".", import.meta.url).pathname,
+  fileURLToPath(new URL(".", import.meta.url)),
   "..",
   "scripts",
   "codefree-companion.mjs"
@@ -71,7 +72,11 @@ export function withSandbox(setup) {
   const env = {
     ...process.env,
     CLAUDE_PLUGIN_DATA: pluginData,
-    PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`
+    PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    // Ensure Windows resolver can find .cmd shims even in sanitised test envs
+    ...(process.platform === "win32" && !process.env.PATHEXT
+      ? { PATHEXT: ".COM;.EXE;.BAT;.CMD" }
+      : {})
   };
 
   if (typeof setup === "function") {
