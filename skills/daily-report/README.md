@@ -50,6 +50,9 @@ node scripts/cache.mjs write /path/to/repo "项目名称"
 node scripts/cache.mjs read-commit /path/to/repo
 node scripts/cache.mjs write-commit /path/to/repo <sha>
 
+# 获取今日提交列表（自动选择增量/全天模式）
+node scripts/commits.mjs /path/to/repo user@example.com
+
 # 手动验证报告格式
 echo "- MyProject-完成功能；" | node scripts/validate.mjs
 
@@ -162,6 +165,7 @@ daily-report/
 ├── SKILL.md                 (skill 元数据 + Claude 操作步骤)
 ├── scripts/
 │   ├── cache.mjs            (CLI shim：5 个 action 的命令行入口)
+│   ├── commits.mjs          (CLI shim：封装 git log 逻辑，缓存命中时用 <sha>..HEAD，否则 --since=midnight)
 │   ├── validate.mjs         (CLI shim：从 stdin 读取并验证格式)
 │   ├── clipboard.mjs        (CLI shim：跨平台剪贴板复制)
 │   └── lib/
@@ -170,6 +174,7 @@ daily-report/
 │       └── clipboard.mjs    (纯函数：平台候选项检测 + 复制逻辑)
 └── tests/
     ├── cache.test.mjs       (18 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir / .orphaned_at 跳过)
+    ├── commits.test.mjs     (6 用例：无参数退出码 / 无缓存走 since-midnight / 缓存命中走 sha..HEAD / 空日志 / 非 git 仓库)
     ├── validator.test.mjs   (10 用例：happy / edge / error)
     ├── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
     └── clipboard.test.mjs   (17 用例：平台检测 / 复制逻辑 / CLI shim 集成)
@@ -179,7 +184,8 @@ daily-report/
 
 - **realpath 标准化键**：`normalizeKey` 用 `fs.realpathSync` 解析软链接，再 fallback 到 `path.resolve`，避免同一仓库因路径形式不同产生多条缓存记录
 - **`_` 前缀键保留**：JSON 中以 `_` 开头的键被 `loadJson` 过滤，保留给未来元数据扩展使用
-- **两层路径解析**：SKILL.md 中 `cache.mjs resolve` 优先在当前目录查找，再在 `~/.claude/plugins/cache` 中递归搜索，适配项目级和插件级两种安装方式
+- **单指令路径解析**：SKILL.md 中 `cache.mjs resolve` 内部依次在 cwd 和 `~/.claude/plugins/cache` 中搜索锚文件，最终兜底到脚本自身目录，始终返回有效路径，无需 SKILL.md 侧的 bash 条件判断
+- **commits.mjs 封装分支逻辑**：缓存命中时使用 `<sha>..HEAD` 增量查询，缺失时使用 `--since=midnight` 全天查询；逻辑集中在 Node.js 脚本中，SKILL.md 只调用一行命令
 - **validator 纯函数化**：`validate(text)` 返回 `string[]`，无 IO 依赖，shim 处理 stdin 和退出码；方便单元测试和 Claude 内联调用
 
 **运行测试**：
@@ -188,7 +194,7 @@ daily-report/
 cd skills/daily-report && npm test
 ```
 
-覆盖 51 个用例：缓存 I/O（18）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
+覆盖 57 个用例：缓存 I/O（18）、commits 逻辑（6）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
 
 ## 限制
 

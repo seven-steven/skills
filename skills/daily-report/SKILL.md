@@ -24,13 +24,7 @@ Determine the absolute path of the `scripts/` directory before any script call.
 Store the result as `$SKILL_SCRIPTS_DIR`.
 
 ```bash
-SKILL_SCRIPTS_DIR=$(node scripts/cache.mjs resolve 2>/dev/null)
-if [ -z "$SKILL_SCRIPTS_DIR" ]; then
-  SKILL_SCRIPTS_DIR=$(find ~/.claude/plugins/cache -path "*/daily-report/scripts/cache.mjs" -print -quit 2>/dev/null | xargs dirname 2>/dev/null)
-fi
-if [ -z "$SKILL_SCRIPTS_DIR" ]; then
-  SKILL_SCRIPTS_DIR=scripts
-fi
+SKILL_SCRIPTS_DIR=$(node scripts/cache.mjs resolve)
 ```
 
 ## Context
@@ -42,21 +36,10 @@ fi
 
 1. Resolve `$SKILL_SCRIPTS_DIR` using the **Path Resolution** block above.
 
-2. Read the cached last commit:
+2. Fetch today's commits:
 
    ```bash
-   cached=$(node "$SKILL_SCRIPTS_DIR/cache.mjs" read-commit <repo_root> 2>/dev/null)
-   ```
-
-   Fetch today's commits:
-
-   ```bash
-   # If cached commit exists, only show new commits since then; otherwise show since midnight
-   if [ -n "$cached" ]; then
-     git log "${cached}..HEAD" --author="<user_email>" --pretty=format:"%h %s" --all
-   else
-     git log --since="midnight" --author="<user_email>" --pretty=format:"%h %s" --all
-   fi
+   node "$SKILL_SCRIPTS_DIR/commits.mjs" <repo_root> <user_email>
    ```
 
    If there are no commits, tell the user there is nothing to report and exit.
