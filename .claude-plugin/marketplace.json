@@ -38,7 +38,7 @@
       "name": "codefree",
       "source": "./plugins/codefree",
       "strict": false,
-      "description": "在 Claude Code 内将编码任务委托给 codefree（qwen-code fork）CLI 执行。用户提到"研发云"时必须使用。"
+      "description": "在 Claude Code 内将编码任务委托给 codefree（qwen-code fork）CLI 执行。用户提到\"研发云\"时必须使用。"
     }
   ]
 }
