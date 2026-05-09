@@ -12,17 +12,17 @@ Claude 读取当前 git 状态与 diff，生成 Angular Conventional Commits 格
 
 ## 用法
 
-Claude 自动触发，无需手动输入命令。也可以直接调用脚本验证 commit message：
+Claude 自动触发，无需手动输入命令。也可以直接调用脚本验证或提交 commit message：
 
 ```bash
-# 从 argv
+# 验证消息
 node scripts/validate.mjs "feat(api): add login endpoint"
 
-# 从 stdin
-printf 'fix(auth): resolve token expiry' | node scripts/validate.mjs
+# 提交消息
+node scripts/commit.mjs "fix(auth): resolve token expiry"
 ```
 
-退出码：`0` 合法，`1` 格式错误（stderr 输出具体错误），`2` 未提供输入。
+退出码：`0` 合法/提交成功，`1` 格式错误或 git commit 失败，`2` 未提供输入。
 
 ## 校验规则
 
@@ -71,26 +71,29 @@ Bash(node:*)
 
 ```
 SKILL.md
-├── Step 4: printf '%s' "<msg>" | node $SKILL_SCRIPTS_DIR/validate.mjs
+├── Path Resolution: 使用 skill 加载时显示的 Base directory 定位 scripts/
+├── Step 4: node <scripts-dir>/validate.mjs "<msg>"
 │   └── scripts/validate.mjs              # CLI 入口（argv / stdin）
+│       ├── scripts/lib/input.mjs          # argv / stdin 读取
 │       └── scripts/lib/commit-message.mjs
 │           ├── normalize(text)           # BOM / CRLF / trailing-newline 清洗
 │           ├── parseMessage(text)        # → { subject, body, trailers }
 │           ├── validateMessage(text)     # → { ok, errors[], parsed? }
 │           └── formatErrorReport(errs)  # 格式化错误列表给 stderr
-└── Step 5: printf '%s' "<msg>" | node $SKILL_SCRIPTS_DIR/commit.mjs
-    └── scripts/commit.mjs               # 从 stdin 读 message，验证后 git commit -F <tmpfile>
+└── Step 5: node <scripts-dir>/commit.mjs "<msg>"
+    └── scripts/commit.mjs               # 从 argv 或 stdin 读 message，验证后 git commit -F <tmpfile>
+        ├── scripts/lib/input.mjs         # argv / stdin 读取
         └── scripts/lib/commit-message.mjs  # 复用同一校验函数，不重复实现
 ```
 
 验证流程：
 
-1. SKILL.md 生成 commit message
+1. SKILL.md 从加载结果里的 `Base directory for this skill` 定位同一份 `scripts/`
 2. `validate.mjs` 读取消息（argv 或 stdin）
 3. 调用 `validateMessage`，返回 `{ ok, errors }`
 4. 合法 → exit 0；非法 → 输出错误到 stderr，exit 1
 5. SKILL.md 读取 stderr 修订消息后重试，最多 3 次
-6. 消息通过校验后，`commit.mjs` 写入临时文件，执行 `git commit -F <tmpfile>`，完成后删除临时文件
+6. 消息通过校验后，`commit.mjs` 从 argv 或 stdin 读取同一消息，写入临时文件，执行 `git commit -F <tmpfile>`，完成后删除临时文件
 
 ## 测试
 
@@ -98,7 +101,7 @@ SKILL.md
 cd skills/git-commit && npm test
 ```
 
-覆盖 41 个用例：`parseMessage` 解析（6）、常量（2）、`validateMessage` 通过（6）、`validateMessage` 错误（14）、`formatErrorReport`（2）、`validate-cli` 退出码（6）、`commit-cli`（7）。
+覆盖 43 个用例：`commit-message` 解析与校验（28）、`validate-cli` 退出码（6）、`commit-cli`（7）、`SKILL.md` 路径解析与命令形态（2）。
 
 ## 限制
 

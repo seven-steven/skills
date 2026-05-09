@@ -18,7 +18,11 @@ function initGitRepo(dir) {
   spawnSync("git", ["-C", dir, "config", "user.email", "test@example.com"]);
   spawnSync("git", ["-C", dir, "config", "user.name", "Test"]);
   spawnSync("git", ["-C", dir, "config", "commit.gpgsign", "false"]);
-  writeFileSync(join(dir, "file.txt"), "hello");
+  stageChange(dir, "file.txt", "hello");
+}
+
+function stageChange(dir, filename, content) {
+  writeFileSync(join(dir, filename), content);
   spawnSync("git", ["-C", dir, "add", "."]);
 }
 
@@ -52,18 +56,28 @@ test("commit-cli - Co-Authored-By trailer → exit 1", () => {
 
 // ── happy path ────────────────────────────────────────────────────────────────
 
-test("commit-cli - valid message in git repo → exit 0, commit created", () => {
+test("commit-cli - argv and stdin valid messages in git repo → exit 0, commits created", () => {
   const dir = mkdtempSync(join(tmpdir(), "commit-test-"));
   try {
     initGitRepo(dir);
-    const r = spawnSync(process.execPath, [COMMIT_MJS], {
-      input: "feat(api): add login endpoint",
+
+    const argvCommit = spawnSync(process.execPath, [COMMIT_MJS, "feat(api): add login endpoint"], {
       encoding: "utf8",
       cwd: dir,
     });
-    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.equal(argvCommit.status, 0, `stderr: ${argvCommit.stderr}`);
+
+    stageChange(dir, "file.txt", "hello again");
+    const stdinCommit = spawnSync(process.execPath, [COMMIT_MJS], {
+      input: "fix(api): update login endpoint",
+      encoding: "utf8",
+      cwd: dir,
+    });
+    assert.equal(stdinCommit.status, 0, `stderr: ${stdinCommit.stderr}`);
+
     const log = spawnSync("git", ["-C", dir, "log", "--oneline"], { encoding: "utf8" });
     assert.ok(log.stdout.includes("feat(api): add login endpoint"), `log: ${log.stdout}`);
+    assert.ok(log.stdout.includes("fix(api): update login endpoint"), `log: ${log.stdout}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

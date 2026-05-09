@@ -1,24 +1,9 @@
 #!/usr/bin/env node
-import { createInterface } from "node:readline";
 import { validateMessage, formatErrorReport } from "./lib/commit-message.mjs";
-
-async function readStdin() {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin });
-    const lines = [];
-    rl.on("line", (l) => lines.push(l));
-    rl.on("close", () => resolve(lines.join("\n")));
-  });
-}
+import { readMessageInput } from "./lib/input.mjs";
 
 async function main() {
-  let message;
-
-  if (process.argv[2] !== undefined) {
-    message = process.argv[2];
-  } else if (!process.stdin.isTTY) {
-    message = await readStdin();
-  }
+  const message = await readMessageInput();
 
   if (message === undefined || !message.trim()) {
     process.stderr.write(

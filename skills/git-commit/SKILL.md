@@ -16,32 +16,31 @@ argument-hint: <append message> (optional, appended to the generated subject)
 
 ## Path Resolution
 
-This skill bundles a Node.js validator under its installation directory. Before
-running anything, resolve the absolute path of the `scripts/` directory and
-store it as `$SKILL_SCRIPTS_DIR`:
+Claude Code shows `Base directory for this skill: <skill-dir>` above these
+instructions when the skill is loaded. Resolve bundled scripts from that loaded
+skill directory:
 
-1. Try relative path `scripts/` first (works for project-level installs).
-2. If that fails, search for the anchor file `validate.mjs` under:
-   - `~/.claude/plugins/cache/**/git-commit/scripts/validate.mjs` (global plugin install)
-   - `<plugin-source>/skills/git-commit/scripts/validate.mjs` (project-level install via marketplace)
-3. Use the resolved path in every command below.
+1. Set `<scripts-dir>` to `<skill-dir>/scripts`.
+2. Use `<scripts-dir>/validate.mjs` and `<scripts-dir>/commit.mjs` from the same directory.
+3. Do not search `~/.claude/plugins/cache` by `validate.mjs` alone; stale cache copies can contain the validator but not the commit helper.
+4. Use absolute script paths directly in `node` commands. Do not attach shell variable assignments before git or node commands, because that bypasses the allowed-tool patterns and causes extra permission prompts.
 
 ## Steps
 
-1. Resolve `$SKILL_SCRIPTS_DIR` per **Path Resolution**.
-2. Stage files that are relevant to the current session's work. Ask when scope is unclear.
+1. Resolve `<scripts-dir>` per **Path Resolution**.
+2. Stage files that are relevant to the current session's work using standalone `git add ...` commands. Ask when scope is unclear.
 3. Compose an Angular-format commit message: `<type>(<scope>): <subject>`.
    - If user provided `<append message>`, append it to the subject.
    - Add a blank-line-separated body if the change needs explanation.
 4. Validate the message:
    ```
-   printf '%s' "<message>" | node "$SKILL_SCRIPTS_DIR/validate.mjs"
+   node "<scripts-dir>/validate.mjs" "<message>"
    ```
    If it exits non-zero, read the stderr errors, revise the message, and retry.
    Repeat up to 3 times; if still failing, ask the user for guidance.
-5. Commit via stdin:
+5. Commit with the same validated message:
    ```
-   printf '%s' "<message>" | node "$SKILL_SCRIPTS_DIR/commit.mjs"
+   node "<scripts-dir>/commit.mjs" "<message>"
    ```
 
 ## Constitution

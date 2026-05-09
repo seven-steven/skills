@@ -1,31 +1,17 @@
 #!/usr/bin/env node
-import { createInterface } from "node:readline";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { validateMessage, formatErrorReport } from "./lib/commit-message.mjs";
-
-async function readStdin() {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin });
-    const lines = [];
-    rl.on("line", (l) => lines.push(l));
-    rl.on("close", () => resolve(lines.join("\n")));
-  });
-}
+import { readMessageInput } from "./lib/input.mjs";
 
 async function main() {
-  if (process.stdin.isTTY) {
-    process.stderr.write("usage: printf '%s' '<message>' | node commit.mjs\n");
-    process.exit(2);
-  }
+  const message = await readMessageInput();
 
-  const message = await readStdin();
-
-  if (!message.trim()) {
-    process.stderr.write("usage: printf '%s' '<message>' | node commit.mjs\n");
+  if (message === undefined || !message.trim()) {
+    process.stderr.write("usage: commit.mjs <message>  # or pipe via stdin\n");
     process.exit(2);
   }
 
