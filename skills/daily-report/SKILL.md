@@ -1,5 +1,6 @@
 ---
 name: daily-report
+disable-model-invocation: true
 description: >-
   Generate a Chinese daily work report (工作日报) from today's git commit
   history, formatted as one bullet per line "- ProjectName-Module-Work；".
