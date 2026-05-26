@@ -24,6 +24,28 @@ node scripts/commit.mjs "fix(auth): resolve token expiry"
 
 退出码：`0` 合法/提交成功，`1` 格式错误或 git commit 失败，`2` 未提供输入。
 
+## 语言策略
+
+skill 会结合当前 Context 推断用户语言倾向，来源包括：
+
+- 当前对话
+- 用户消息
+- 用户显式指定的语言
+- 仓库或系统提供的上下文
+
+推断优先级：
+
+1. 用户显式指定的语言
+2. 当前对话的主要语言
+3. 最近一次提交请求使用的语言
+4. 无法判断时默认英文
+
+生成 commit message 时：
+
+- `type` 和 `scope` 仍保持 Conventional Commits 规定的英文标识
+- `subject` 和 `body` 使用推断出的用户语言倾向
+- 仅当语言指令互相冲突时，才需要向用户进一步确认
+
 ## 校验规则
 
 验证脚本执行严格 Angular Conventional Commits 校验：
@@ -45,6 +67,7 @@ node scripts/commit.mjs "fix(auth): resolve token expiry"
 ```
 feat: add user login
 fix(auth): resolve token expiry bug
+fix(auth): 修复令牌过期处理
 refactor(db): extract connection pool helper
 ```
 
@@ -101,10 +124,11 @@ SKILL.md
 cd skills/git-commit && npm test
 ```
 
-覆盖 43 个用例：`commit-message` 解析与校验（28）、`validate-cli` 退出码（6）、`commit-cli`（7）、`SKILL.md` 路径解析与命令形态（2）。
+覆盖 45 个用例：`commit-message` 解析与校验（28）、`validate-cli` 退出码（6）、`commit-cli`（7）、`SKILL.md` 路径解析与语言策略（4）。
 
 ## 限制
 
+- 语言倾向来自 Context 推断，显式语言指令优先；如果上下文不足，默认回退到英文
 - 只校验 commit message 的格式，不做语义判断（subject 是否准确描述变更）
 - subject 大小写规则仅检测首字符是否为 ASCII 大写，不处理 Unicode 特殊字符
 - 不接管 staging 决策：由 SKILL 指令和 Claude 判断哪些文件应该 stage

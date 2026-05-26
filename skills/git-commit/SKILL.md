@@ -14,6 +14,10 @@ argument-hint: <append message> (optional, appended to the generated subject)
 - Staged and unstaged diff: !`git diff HEAD`
 - Recent commits: !`git log --oneline -10`
 - Current session work content
+- Current conversation
+- User messages
+- Explicit language instructions
+- Repository/system context
 
 ## Path Resolution
 
@@ -30,23 +34,34 @@ skill directory:
 
 1. Resolve `<scripts-dir>` per **Path Resolution**.
 2. Stage files that are relevant to the current session's work using standalone `git add ...` commands. Ask when scope is unclear.
-3. Compose an Angular-format commit message: `<type>(<scope>): <subject>`.
+3. Infer the user's language preference from Context before composing the message.
+   - Prefer explicit user language.
+   - Otherwise prefer the current conversation dominant language.
+   - Otherwise prefer the recent commit request language.
+   - If the language is still unclear, default English.
+   - Do not ask only to confirm language unless the instructions conflict.
+4. Compose an Angular-format commit message: `<type>(<scope>): <subject>`.
    - If user provided `<append message>`, append it to the subject.
+   - Subject/body use the inferred user language.
+   - type/scope remain Conventional Commit English tokens.
    - Add a blank-line-separated body if the change needs explanation.
-4. Validate the message:
+5. Validate the message:
    ```
    node "<scripts-dir>/validate.mjs" "<message>"
    ```
    If it exits non-zero, read the stderr errors, revise the message, and retry.
    Repeat up to 3 times; if still failing, ask the user for guidance.
-5. Commit with the same validated message:
+6. Commit with the same validated message:
    ```
    node "<scripts-dir>/commit.mjs" "<message>"
    ```
 
 ## Constitution
 
-- Write the commit message body in the user's preferred language; keep the `<type>(<scope>): <subject>` header in English.
+- Infer the user's language preference from Context before composing the commit message.
+- Let explicit user language override other signals. Otherwise prefer the current conversation dominant language, then the recent commit request language, and default English when still unclear.
+- Subject/body use the inferred user language.
+- type/scope remain Conventional Commit English tokens.
 - Never include `Co-Authored-By` trailers.
 - Stage only files related to the current session's work; ask when in doubt rather than assuming scope.
 - For large change sets, split into atomic commits grouped by coherent purpose. Each commit should represent a single logical unit, not a bundle of unrelated work.
