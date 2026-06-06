@@ -102,6 +102,50 @@ test("commit-cli - multi-line message in git repo → commit body preserved", ()
   }
 });
 
+test("commit-cli - --cwd valid message in target repo → exit 0, commit created", () => {
+  const dir = mkdtempSync(join(tmpdir(), "commit-test-"));
+  try {
+    initGitRepo(dir);
+
+    const commit = spawnSync(process.execPath, [COMMIT_MJS, "--cwd", dir, "feat(api): add login endpoint"], {
+      encoding: "utf8",
+      cwd: tmpdir(),
+    });
+    assert.equal(commit.status, 0, `stderr: ${commit.stderr}`);
+
+    const log = spawnSync("git", ["-C", dir, "log", "--oneline"], { encoding: "utf8" });
+    assert.ok(log.stdout.includes("feat(api): add login endpoint"), `log: ${log.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("commit-cli - --cwd reads valid message from stdin → exit 0, commit created", () => {
+  const dir = mkdtempSync(join(tmpdir(), "commit-test-"));
+  try {
+    initGitRepo(dir);
+
+    const commit = spawnSync(process.execPath, [COMMIT_MJS, "--cwd", dir], {
+      input: "fix(api): update login endpoint",
+      encoding: "utf8",
+      cwd: tmpdir(),
+    });
+    assert.equal(commit.status, 0, `stderr: ${commit.stderr}`);
+
+    const log = spawnSync("git", ["-C", dir, "log", "--oneline"], { encoding: "utf8" });
+    assert.ok(log.stdout.includes("fix(api): update login endpoint"), `log: ${log.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("commit-cli - --cwd without path → exit 2, usage on stderr", () => {
+  const r = spawnSync(process.execPath, [COMMIT_MJS, "--cwd"], { encoding: "utf8" });
+  assert.equal(r.status, 2);
+  assert.ok(r.stderr.includes("usage:"), `stderr: ${r.stderr}`);
+  assert.ok(r.stderr.includes("--cwd"), `stderr: ${r.stderr}`);
+});
+
 // ── temp file cleanup ─────────────────────────────────────────────────────────
 
 test("commit-cli - temp file is removed after successful commit", () => {
@@ -123,3 +167,4 @@ test("commit-cli - temp file is removed after successful commit", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+

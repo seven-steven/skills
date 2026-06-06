@@ -7,11 +7,39 @@ import { randomBytes } from "node:crypto";
 import { validateMessage, formatErrorReport } from "./lib/commit-message.mjs";
 import { readMessageInput } from "./lib/input.mjs";
 
+function printUsage() {
+  process.stderr.write("usage: commit.mjs [--cwd <repo-path>] <message>  # or pipe via stdin\n");
+}
+
+function parseArgs(argv) {
+  const args = argv.slice(2);
+
+  if (args[0] !== "--cwd") {
+    return { cwd: undefined, messageArg: args[0] };
+  }
+
+  const cwd = args[1];
+  if (!cwd) {
+    return { error: true };
+  }
+
+  return { cwd, messageArg: args[2] };
+}
+
 async function main() {
-  const message = await readMessageInput();
+  const { cwd, messageArg, error } = parseArgs(process.argv);
+  if (error) {
+    printUsage();
+    process.exit(2);
+  }
+
+  const message = await readMessageInput({
+    argv: [process.argv[0], process.argv[1], messageArg].filter(Boolean),
+    stdin: process.stdin,
+  });
 
   if (message === undefined || !message.trim()) {
-    process.stderr.write("usage: commit.mjs <message>  # or pipe via stdin\n");
+    printUsage();
     process.exit(2);
   }
 
@@ -25,7 +53,8 @@ async function main() {
   let exitCode = 1;
   try {
     writeFileSync(tmpFile, message, "utf8");
-    const r = spawnSync("git", ["commit", "-F", tmpFile], { stdio: "inherit" });
+    const gitArgs = cwd ? ["-C", cwd, "commit", "-F", tmpFile] : ["commit", "-F", tmpFile];
+    const r = spawnSync("git", gitArgs, { stdio: "inherit" });
     exitCode = r.status ?? 1;
   } finally {
     try { unlinkSync(tmpFile); } catch { /* already gone */ }

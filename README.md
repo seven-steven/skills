@@ -8,7 +8,7 @@ AI 智能体技能集合，用于软件开发辅助。
 
 | 名称           | 描述                                                                                             | 文档                                     |
 | -------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `git-commit`   | 根据暂存的变更生成 Angular 风格的 git commit 消息并提交                                          | [SKILL.md](skills/git-commit/SKILL.md)   |
+| `git-commit`   | 根据当前变更生成 Angular 风格的 git commit 消息并提交，支持 submodule 先子仓库后父仓库的提交流程 | [SKILL.md](skills/git-commit/SKILL.md)   |
 | `daily-report` | 从今日 git 提交历史生成工作日报（支持项目名称缓存与业务模块分组）                                | [SKILL.md](skills/daily-report/SKILL.md) |
 | `web-fetch`    | 通过 r.jina.ai → markdown.new → defuddle.md 回退链获取 URL 并返回干净的 Markdown，支持代理       | [SKILL.md](skills/web-fetch/SKILL.md)    |
 | `codefree`     | 在 Claude Code 内将编码任务委托给 codefree（qwen-code fork）CLI 执行；用户提到"研发云"时自动触发 | [README.md](plugins/codefree/README.md)  |

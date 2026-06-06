@@ -33,3 +33,18 @@ test("SKILL.md keeps conventional commit tokens in English while localizing natu
   assert.match(SKILL, /type\/scope remain Conventional Commit English tokens/i);
   assert.match(SKILL, /Never include `Co-Authored-By` trailers\./);
 });
+
+test("SKILL.md exposes submodule context and tools", () => {
+  assert.match(SKILL, /Bash\(git submodule:\*\)/);
+  assert.match(SKILL, /Bash\(git -C:\*\)/);
+  assert.match(SKILL, /git submodule status --recursive/);
+  assert.match(SKILL, /git submodule foreach --recursive git status --short/);
+  assert.match(SKILL, /git status --short --branch --ignore-submodules=none/);
+});
+
+test("SKILL.md requires submodule commits before parent repository commits", () => {
+  assert.match(SKILL, /commit changes inside affected submodules before committing the parent repository/i);
+  assert.match(SKILL, /node\s+["']<scripts-dir>\/commit\.mjs["']\s+--cwd\s+["']<submodule-path>["']\s+["']<submodule-message>["']/);
+  assert.match(SKILL, /git add <submodule-path>/);
+  assert.match(SKILL, /nested submodules[\s\S]*deepest-first/i);
+});
