@@ -99,7 +99,7 @@ feat: <73 chars here...>   # subject 超过 72 字符
 
 ## 配置
 
-无环境变量。`allowed-tools` 限定了脚本运行时所需的 git 和 node 权限：
+无环境变量。skill 在 `SKILL.md` frontmatter 中使用 `model: haiku`，以 Haiku 执行提交工作流。`allowed-tools` 限定了脚本运行时所需的 git 和 node 权限：
 
 ```
 Bash(git add:*), Bash(git status:*), Bash(git diff:*),

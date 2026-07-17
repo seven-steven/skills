@@ -1,5 +1,6 @@
 ---
 name: git-commit
+model: haiku
 disable-model-invocation: true
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git commit:*), Bash(git submodule:*), Bash(git -C:*), Bash(node:*)
 description: >-
