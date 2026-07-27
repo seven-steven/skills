@@ -82,7 +82,7 @@
 # → 输出已完成任务的完整内容
 ```
 
-任务状态持久化到 `${CLAUDE_PLUGIN_DATA}/state/<repo-slug>/`，会话重启后仍可查看结果。
+任务状态持久化到 `${CLAUDE_PLUGIN_DATA}/state/<repo-slug>/`，会话重启后仍可查看结果。后台模式立即返回的 job ID、状态和原始结果由 companion script 提供，因此不经过 `codefree-task` subagent 的结果呈现协议。
 
 ## SubAgent
 

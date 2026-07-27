@@ -1,158 +1,158 @@
 # git-commit
 
-将当前 session 的 git 变更转换为规范的 Angular 格式 commit。
+`/git-commit` 将当前任务相关的 Git 变更提交为规范的 Angular Conventional Commit。它先用轻量 Git 状态判断范围，只在需要时读取 diff、历史或 submodule 细节，然后通过 Node.js helper 校验并执行提交。
 
 ## 用途
 
-Claude 读取当前 git 状态、diff 与 submodule 信息，生成 Angular Conventional Commits 格式的 commit message，通过 Node.js 验证脚本校验后执行 `git commit`。适用于：
+适用于以下场景：
 
-- 日常开发提交（feat、fix、refactor 等）
-- 需要按逻辑拆分成多个原子 commit 的大型变更
-- 多行 commit message（subject + body）
-- 包含 git submodule 的仓库，且需要先提交 submodule 再提交父仓库
+- 显式调用 `/git-commit`
+- 要求“提交代码”“提交变更”“git commit”或“commit changes”
+- 需要从当前任务的变更生成 Conventional Commit message
+- 需要将 submodule 的变更先提交，再提交父仓库 gitlink 更新
 
-## 用法
+Skill 只会暂存与当前任务相关的文件；范围无法判断时会先询问，不会把无关改动一并提交。
 
-Claude 自动触发，无需手动输入命令。也可以直接调用脚本验证或提交 commit message：
+## 使用方式
+
+在 Claude Code 中直接输入：
+
+```text
+/git-commit
+```
+
+可选参数会追加到生成的 subject：
+
+```text
+/git-commit include migration note
+```
+
+也可独立调用 helper：
 
 ```bash
-# 验证消息
+# 校验消息
 node scripts/validate.mjs "feat(api): add login endpoint"
 
-# 在当前仓库提交消息
+# 在当前仓库提交
 node scripts/commit.mjs "fix(auth): resolve token expiry"
 
-# 在指定仓库目录提交消息，例如 submodule 路径
+# 在指定仓库目录提交，例如 submodule
 node scripts/commit.mjs --cwd path/to/submodule "fix(core): update submodule logic"
 ```
 
-退出码：`0` 合法/提交成功，`1` 格式错误或 git commit 失败，`2` 未提供输入或 `--cwd` 参数不完整。
+退出码：`0` 表示合法或提交成功，`1` 表示格式错误或 Git 提交失败，`2` 表示缺少输入或 `--cwd` 参数不完整。
 
-## 语言策略
+## 工作流
 
-skill 会结合当前 Context 推断用户语言倾向，来源包括：
+### 初始上下文与按需读取
 
-- 当前对话
-- 用户消息
-- 用户显式指定的语言
-- 仓库或系统提供的上下文
+`/git-commit` 初始只读取当前分支和简短状态：
 
-推断优先级：
+```text
+git branch --show-current
+git status --short --branch
+```
+
+随后结合当前 session 和用户任务识别候选改动。仅在必要时才读取额外信息：
+
+- 无法确认范围或无法准确生成消息时，读取 `git diff HEAD`
+- 无法确定语言偏好或需要参考本地提交惯例时，读取 `git log --oneline -10`
+- 状态显示 submodule 改动或任务涉及 submodule 时，读取 submodule 状态和工作树详情
+
+这可避免为普通提交预先加载无关 diff、日志与递归 submodule 信息。
+
+### 暂存与提交
+
+1. 只用 `git add ...` 暂存当前任务相关文件；范围不清时询问用户。
+2. 大型变更按单一、连贯目的拆分为原子 commit。
+3. 根据语言策略生成 `<type>(<scope>): <subject>` 消息；必要时增加空行分隔的 body。
+4. 每条消息用 `validate.mjs` 校验。失败时读取 stderr、修改后重试，最多三次；第三次失败后询问用户。
+5. 用 `commit.mjs` 提交已暂存的改动。
+6. 最终报告提交 hash（含 submodule hash）以及未暂存或未纳入的相关改动。
+
+### 语言策略
+
+消息自然语言部分的优先级如下：
 
 1. 用户显式指定的语言
 2. 当前对话的主要语言
 3. 最近一次提交请求使用的语言
-4. 无法判断时默认英文
+4. 无法判断时使用英文
 
-生成 commit message 时：
+`type` 与 `scope` 始终保持 Conventional Commits 的英文 token；`subject` 和 `body` 使用推断语言。除非语言指令冲突，否则不会只为确认语言而打断流程。
 
-- `type` 和 `scope` 仍保持 Conventional Commits 规定的英文标识
-- `subject` 和 `body` 使用推断出的用户语言倾向
-- 仅当语言指令互相冲突时，才需要向用户进一步确认
+### Submodule 工作流
+
+仅当状态或任务表明 submodule 受影响时才检查其详细信息。对需要提交的 submodule：
+
+1. 按需检查局部状态、diff 和提交历史。
+2. 仅暂存当前任务相关文件；嵌套 submodule 按 deepest-first 顺序处理。
+3. 先在 submodule 内通过 `commit.mjs --cwd` 提交。
+4. 回到其父仓库后执行 `git add <submodule-path>`，将 gitlink 更新纳入父级提交。
+5. 最后提交父仓库。
+
+不提交与当前任务无关的 submodule 改动；范围不明确时会询问用户。
 
 ## 校验规则
 
-验证脚本执行严格 Angular Conventional Commits 校验：
+`validate.mjs` 与 `commit.mjs` 都执行严格校验：
 
-| 规则               | 说明                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| **格式**           | 必须是 `<type>(<scope>): <subject>`，scope 可选                                    |
-| **type 白名单**    | `feat` `fix` `docs` `style` `refactor` `test` `chore` `perf` `build` `ci` `revert` |
-| **subject 长度**   | ≤ 72 字符（含 type、scope、冒号）                                                  |
-| **subject 大小写** | 首字母必须小写                                                                     |
-| **subject 结尾**   | 不能以 `.` 结尾                                                                    |
-| **多行分隔**       | 第 2 行（body 开始前）必须为空行                                                   |
-| **禁用 trailer**   | 任何位置禁止 `Co-Authored-By`（大小写不敏感）                                      |
+| 规则           | 说明                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| 格式           | `<type>(<scope>): <subject>`，scope 可选                                                     |
+| type 白名单    | `feat`、`fix`、`docs`、`style`、`refactor`、`test`、`chore`、`perf`、`build`、`ci`、`revert` |
+| subject 长度   | 含 type、scope、冒号在内不超过 72 字符                                                       |
+| subject 大小写 | 首字符不能是 ASCII 大写字母                                                                  |
+| subject 结尾   | 不能以 `.` 结尾                                                                              |
+| 多行分隔       | body 前第二行必须为空行                                                                      |
+| trailer        | 禁止任何位置出现 `Co-Authored-By`，不区分大小写                                              |
 
-## 示例
+合法示例：
 
-**合法**：
-
-```
+```text
 feat: add user login
 fix(auth): resolve token expiry bug
 fix(auth): 修复令牌过期处理
-refactor(db): extract connection pool helper
 ```
-
-**非法**：
-
-```
-feat add something         # 缺少冒号
-Bug: fix crash             # 未知 type（大小写敏感）
-feat: Add new feature.     # 首字母大写 + 结尾有句点
-feat: <73 chars here...>   # subject 超过 72 字符
-```
-
-## Submodule 工作流
-
-当仓库包含 submodule 且 submodule 中存在需要提交的变更时，skill 应遵循以下顺序：
-
-1. 通过 Context 中的 submodule 信息识别受影响的 submodule。
-2. 进入每个 submodule 检查局部状态、diff 和最近提交。
-3. 只 stage 当前任务相关的 submodule 文件。
-4. 先在 submodule 内生成、校验并提交独立的 commit message。
-5. 回到父仓库后执行 `git add <submodule-path>`，纳入更新后的 gitlink 指针。
-6. 最后提交父仓库变更。
-
-如果存在嵌套 submodule，应按最深层优先处理；如果 submodule 变更与当前任务范围无关，应先询问用户。
 
 ## 配置
 
-无环境变量。skill 在 `SKILL.md` frontmatter 中使用 `model: haiku`，以 Haiku 执行提交工作流。`allowed-tools` 限定了脚本运行时所需的 git 和 node 权限：
+不需要环境变量。SKILL frontmatter 保留以下行为：
 
-```
-Bash(git add:*), Bash(git status:*), Bash(git diff:*),
-Bash(git log:*), Bash(git branch:*), Bash(git commit:*),
-Bash(git submodule:*), Bash(git -C:*), Bash(node:*)
-```
+- `model: haiku`：使用 Haiku 执行提交工作流
+- `disable-model-invocation: true`：避免模型自动调用；用户应显式使用 `/git-commit`
+- `allowed-tools`：限制为所需 Git 与 Node.js 命令
 
 ## 实现架构
 
-```
+```text
 SKILL.md
-├── Context: branch / status / diff / recent commits / submodule status
-├── Path Resolution: 使用 skill 加载时显示的 Base directory 定位 scripts/
-├── Step 6: node <scripts-dir>/validate.mjs "<msg>"
-│   └── scripts/validate.mjs               # CLI 入口（argv / stdin）
-│       ├── scripts/lib/input.mjs          # argv / stdin 读取
-│       └── scripts/lib/commit-message.mjs
-│           ├── normalize(text)            # BOM / CRLF / trailing-newline 清洗
-│           ├── parseMessage(text)         # → { subject, body, trailers }
-│           ├── validateMessage(text)      # → { ok, errors[], parsed? }
-│           └── formatErrorReport(errs)    # 格式化错误列表给 stderr
-├── Step 7: node <scripts-dir>/commit.mjs --cwd "<submodule-path>" "<submodule-message>"
-└── Step 10: node <scripts-dir>/commit.mjs "<msg>"
-    └── scripts/commit.mjs                 # 从 argv 或 stdin 读 message，验证后 git commit -F <tmpfile>
-        ├── scripts/lib/input.mjs          # argv / stdin 读取
-        └── scripts/lib/commit-message.mjs # 复用同一校验函数，不重复实现
+├── 轻量初始上下文：branch + short status
+├── 按需读取：diff / log / submodule details
+├── 从 Base directory for this skill 定位 scripts/
+├── scripts/validate.mjs
+│   ├── scripts/lib/input.mjs
+│   └── scripts/lib/commit-message.mjs
+└── scripts/commit.mjs
+    ├── 复用同一校验逻辑
+    ├── 支持 --cwd <submodule-path>
+    └── 以临时文件传给 git commit -F
 ```
 
-验证流程：
-
-1. SKILL.md 从加载结果里的 `Base directory for this skill` 定位同一份 `scripts/`
-2. 读取普通仓库状态以及 submodule 状态
-3. `validate.mjs` 读取消息（argv 或 stdin）
-4. 调用 `validateMessage`，返回 `{ ok, errors }`
-5. 合法 → exit 0；非法 → 输出错误到 stderr，exit 1
-6. SKILL.md 读取 stderr 修订消息后重试，最多 3 次
-7. 如果存在 submodule 变更，先调用 `commit.mjs --cwd <submodule-path>` 提交 submodule
-8. 回到父仓库 stage submodule path，随后由 `commit.mjs` 在父仓库提交
+脚本路径始终从 Skill 加载时提供的 `Base directory for this skill` 解析，不会按文件名搜索插件缓存，以避免使用过期或不完整的 helper。
 
 ## 测试
 
 ```bash
-cd skills/git-commit && npm test
+cd skills/git-commit
+npm test
 ```
 
-测试覆盖：`commit-message` 解析与校验、`validate-cli` 退出码、`commit-cli` 普通提交流程、`commit-cli --cwd` 指定仓库提交流程，以及 `SKILL.md` 的路径解析、语言策略与 submodule 工作流指令。
+测试覆盖 message 解析和校验、validate CLI、commit helper 的当前仓库及 `--cwd` 流程，以及 `SKILL.md` 的 metadata、按需读取、路径解析、语言优先级、submodule deepest-first、三次校验限制和最终报告指令。
 
 ## 限制
 
-- 语言倾向来自 Context 推断，显式语言指令优先；如果上下文不足，默认回退到英文
-- 只校验 commit message 的格式，不做语义判断（subject 是否准确描述变更）
-- subject 大小写规则仅检测首字符是否为 ASCII 大写，不处理 Unicode 特殊字符
-- 不接管 staging 决策：由 SKILL 指令和 Claude 判断哪些文件应该 stage
-- 不自动提交与当前任务无关的 submodule 变更；遇到范围不清晰或冲突时需要先询问用户
-- 复杂嵌套 submodule 依赖指令按 deepest-first 执行，极端冲突场景仍需人工介入
-- TLS-over-tunnel 等场景不适用（本 skill 不涉及网络）
+- 消息校验只检查格式，不判断 subject 是否准确概括改动。
+- subject 大小写规则仅检查 ASCII 大写首字符，不处理 Unicode 特殊大小写。
+- Skill 不会猜测不明确的暂存范围，也不会自动纳入无关变更。
+- 复杂嵌套 submodule 或冲突仍可能需要人工决策。

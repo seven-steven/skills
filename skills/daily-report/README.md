@@ -1,205 +1,134 @@
 # daily-report
 
-根据当天的 git 提交历史生成中文工作日报，每条记录格式为 `- 项目名称-业务模块-工作内容；`。
+`daily-report` 用于在 Git 仓库中生成中文工作日报。需要生成日报时应**显式调用**：`/daily-report [项目展示名]`；也可以在任务中明确要求 Claude 调用 `/daily-report`，而不是只询问生成方法。
+
+它会读取当天、当前 Git 身份的提交，输出格式化且已校验的中文条目；同一天的后续调用只汇总此前日报未包含的提交。技能保留 `disable-model-invocation: true`，因此需要用户或上层流程显式调用。
 
 ## 用途
 
-在当前 git 仓库中，按当前用户的 author email 过滤提交记录，自动压缩生成工作日报。适用于：
+适用于：
 
-- 每日下班前总结当天的 git 提交工作
-- 只需说"工作日报"、"日报"、"daily report"、"工作总结"即可触发
-- 支持多次调用：首次调用生成全天报告，当天再次调用只汇报新增提交（增量模式）
+- 下班前从当天 Git 提交整理工作日报；
+- 当天再次提交后，仅补充新增工作；
+- 希望按照固定格式输出并尝试复制到系统剪贴板。
 
-优点：
+不适用于非 Git 目录、没有配置 `git config user.email` 的目录，或需要汇总其他作者提交的场景。
 
-- **增量缓存**：记录上次报告的 commit hash，下次只处理新增提交，避免重复
-- **单用户过滤**：仅汇总 `git config user.email` 匹配的提交，忽略协作者
-- **格式校验**：输出经过内置 validator 验证，确保格式合规后才展示
+## 使用方法
 
-限制：必须在 git 仓库目录内使用。
+在目标仓库内调用：
 
-## 用法
-
-Claude Code 自动触发，无需手动输入命令。也可通过 slash command 直接调用：
-
-```
-/daily-report [项目展示名]
+```text
+/daily-report
+/daily-report MyProject
 ```
 
-项目名称可选；未提供时按优先级自动解析：已缓存名称 → git remote URL slug → 当前目录名。
+项目展示名是可选参数。未传入时，按以下优先级确定：项目名缓存、`origin` 远程地址的仓库名、仓库根目录名称。传入参数会更新该仓库的项目名缓存。
 
-**输出示例**（stdout）：
+技能加载时以 `SKILL.md` 所在目录作为 Base directory，并使用其中的 `scripts/` 绝对路径调用脚本；不依赖当前工作目录中的相对脚本路径。
 
-```
-- MyProject-用户模块-完成登录、注册功能；
-- MyProject-API模块-修复接口鉴权BUG；
-- MyProject-重构认证流程并补充测试；
-```
+## 输出与完成状态
 
-**开发者模式**——直接调用脚本：
+通过校验的报告每行必须是以下之一：
 
-```bash
-# 解析脚本安装路径
-node scripts/cache.mjs resolve
-
-# 查询/写入项目名缓存
-node scripts/cache.mjs read /path/to/repo
-node scripts/cache.mjs write /path/to/repo "项目名称"
-
-# 查询/写入 commit 缓存
-node scripts/cache.mjs read-commit /path/to/repo
-node scripts/cache.mjs write-commit /path/to/repo <sha>
-
-# 获取今日提交列表（自动选择增量/全天模式）
-node scripts/commits.mjs /path/to/repo user@example.com
-
-# 手动验证报告格式
-echo "- MyProject-完成功能；" | node scripts/validate.mjs
-
-# 手动测试剪贴板复制
-echo "- MyProject-完成功能；" | node scripts/clipboard.mjs
+```text
+- 项目名称-工作内容；
+- 项目名称-业务模块-工作内容；
 ```
 
-## 自动复制到剪贴板
+示例：
 
-报告通过格式校验后，自动复制到系统剪贴板，并在输出末尾追加一行状态提示：
-
-```
-- MyProject-用户模块-完成登录、注册功能；
-- MyProject-API模块-修复接口鉴权BUG；
+```text
+- MyProject-用户模块-完成登录和注册功能；
+- MyProject-接口模块-修复鉴权问题并补充测试；
 （已复制到剪贴板）
 ```
 
-如果剪贴板工具不可用，会显示失败原因并提示手动复制，**报告仍正常输出**：
+调用只会落入以下一种互斥状态：
 
+1. **无新增提交**：输出 `暂无新提交，无需生成日报。`，不做校验、剪贴板复制或提交缓存推进。
+2. **校验失败**：说明校验失败后停止；不会复制或推进提交缓存。
+3. **已生成报告**：先完成格式校验，再尝试剪贴板复制，最后写入已汇报的 commit ID 缓存。复制失败不会阻止报告和缓存推进；但缓存写入失败会明确提示，不能声称增量状态已保存。
+
+缓存推进在校验成功之后，且发生在剪贴板尝试之后。这个顺序避免无提交或不合规内容被错误标记为已汇报，同时确保已成功生成的报告不会因剪贴板不可用而重复出现。
+
+## 增量与 `--all` 语义
+
+`commits.mjs` 使用：
+
+```text
+git log --since=midnight --all --author=<user.email>
 ```
-- MyProject-用户模块-完成登录、注册功能；
-（剪贴板复制失败：no-tool-found，请手动复制）
-```
 
-**平台支持**：
+它输出完整 SHA 与提交标题，再排除当天已经记录的 SHA。不能使用简单的 `<cached-sha>..HEAD` 作为 `--all` 的增量范围：`HEAD` 不包含其他分支独有的提交，且一个 SHA 不能代表已处理的全部分支前沿，都会导致漏报或重复。为此，`commit-cache.json` 中每个仓库保存当天已汇报的完整 SHA 集合；次日会自动开始新的集合。
 
-| 平台          | 所需命令                           | 安装方式          |
-| ------------- | ---------------------------------- | ----------------- |
-| macOS         | `pbcopy`                           | 系统自带          |
-| Windows 10+   | `clip`                             | 系统自带          |
-| WSL           | `clip.exe`（首选）→ Linux 工具兜底 | 系统自带          |
-| Linux Wayland | `wl-copy`                          | `wl-clipboard` 包 |
-| Linux X11     | `xclip` 或 `xsel`                  | 同名包            |
-
-**退出码**：
-
-- `validate.mjs` 退出 0 = 格式通过；退出 1 = 格式不合规
-- `cache.mjs` 退出 1 = 参数缺失或 action 不存在
+早期仅保存单个 SHA 的缓存仍可被读取为已汇报项，首次成功写入会迁移为日期加 ID 集合的结构。若要强制在当天重新汇总，删除对应仓库的 `commit-cache.json` 条目。
 
 ## 配置
 
-缓存文件存放于 `~/.claude/skills/daily-report/`（可通过 `DAILY_REPORT_CACHE_DIR` 环境变量覆盖）：
+| 配置                          | 说明                                                        |
+| ----------------------------- | ----------------------------------------------------------- |
+| `DAILY_REPORT_CACHE_DIR`      | 覆盖默认缓存目录。默认是 `~/.claude/skills/daily-report/`。 |
+| `DAILY_REPORT_NO_CLIPBOARD=1` | 跳过剪贴板复制，适合 CI、SSH 或无图形界面环境。             |
 
-| 文件                      | 键类型                 | 值类型          | 作用             |
-| ------------------------- | ---------------------- | --------------- | ---------------- |
-| `project-name-cache.json` | `realpath(仓库根目录)` | 项目展示名      | 省去每次手动传参 |
-| `commit-cache.json`       | `realpath(仓库根目录)` | 上次 commit SHA | 实现增量报告     |
+缓存文件：
 
-**环境变量**：
+| 文件                      | 内容                                                       |
+| ------------------------- | ---------------------------------------------------------- |
+| `project-name-cache.json` | `realpath(仓库根目录)` 到项目展示名的映射。                |
+| `commit-cache.json`       | `realpath(仓库根目录)` 到当天已汇报 commit ID 集合的映射。 |
 
-- `DAILY_REPORT_CACHE_DIR` — 覆盖缓存目录路径（用于测试或自定义）
-- `DAILY_REPORT_NO_CLIPBOARD=1` — 禁用自动剪贴板复制（适用于 CI、无图形界面的 SSH 会话、管道场景）
+## 开发者脚本
 
-**常见操作**：
+从技能安装目录调用脚本。下面的 `<scripts-dir>` 是 `SKILL.md` 同级 `scripts` 目录的绝对路径。
 
-```bash
-# 强制重新汇总全天（清除 commit 缓存中的当前仓库条目）
-# 手动编辑 ~/.claude/skills/daily-report/commit-cache.json，删除对应 key
-
-# 修正错误的项目名称（二选一）
-node scripts/cache.mjs write $(git rev-parse --show-toplevel) "正确的项目名"
-# 或直接编辑 project-name-cache.json
+```text
+node <scripts-dir>/commits.mjs <repo-root> <user-email>
+node <scripts-dir>/cache.mjs read <repo-root>
+node <scripts-dir>/cache.mjs write <repo-root> <project-name>
+node <scripts-dir>/cache.mjs read-reported <repo-root>
+node <scripts-dir>/cache.mjs write-reported <repo-root> '["<full-sha>"]'
+node <scripts-dir>/validate.mjs <report-file>
+node <scripts-dir>/clipboard.mjs <report-file>
 ```
 
-设置 `DAILY_REPORT_CACHE_DIR`（用于测试或自定义路径）：
-
-```json
-{
-  "env": {
-    "DAILY_REPORT_CACHE_DIR": "/path/to/custom/cache"
-  }
-}
-```
-
-## 示例
-
-**场景一：全新仓库，首次调用（无缓存）**
-
-```
-/daily-report MyApp
-```
-
-- 从 midnight 开始抓取今天所有提交
-- 将 `MyApp` 写入 `project-name-cache.json`
-- 生成并校验报告后，将最新 commit hash 写入 `commit-cache.json`
-
-**场景二：当天第二次调用（增量模式）**
-
-```
-/daily-report
-```
-
-- 从上次报告的 commit hash 开始，只处理新增提交
-- 若无新提交，提示"暂无新提交"并退出
-
-**场景三：包含跨分支提交（`--all`）**
-
-feature 分支上有提交，切回 main 分支后调用：
-
-```
-/daily-report
-```
-
-- `--all` 参数使 git log 遍历所有本地分支，feature 分支的提交也会被纳入报告
+`commits.mjs` 每行输出 `完整SHA<TAB>提交标题`。`validate.mjs` 成功时退出码为 0，格式错误时退出码为 1。`clipboard.mjs` 无论复制工具失败与否都使用退出码 0，通过 stdout/stderr 表示结果，避免复制问题掩盖已生成的日报。
 
 ## 实现架构
 
-```
+```text
 daily-report/
-├── SKILL.md                 (skill 元数据 + Claude 操作步骤)
+├── SKILL.md
+├── README.md
 ├── scripts/
-│   ├── cache.mjs            (CLI shim：5 个 action 的命令行入口)
-│   ├── commits.mjs          (CLI shim：封装 git log 逻辑，缓存命中时用 <sha>..HEAD，否则 --since=midnight)
-│   ├── validate.mjs         (CLI shim：从 stdin 读取并验证格式)
-│   ├── clipboard.mjs        (CLI shim：跨平台剪贴板复制)
+│   ├── commits.mjs          # 查询当天 --all 提交并按已汇报 ID 过滤
+│   ├── cache.mjs            # 项目名与已汇报 ID 缓存的 CLI 入口
+│   ├── validate.mjs         # 读取文件或 stdin，校验日报格式
+│   ├── clipboard.mjs        # 跨平台复制入口
 │   └── lib/
-│       ├── cache.mjs        (纯函数：JSON 读写、路径标准化、脚本路径解析)
-│       ├── validator.mjs    (纯函数：正则校验 + 逐行错误定位)
-│       └── clipboard.mjs    (纯函数：平台候选项检测 + 复制逻辑)
+│       ├── cache.mjs        # JSON 缓存、路径规范化与日期范围的 ID 集合
+│       ├── validator.mjs    # 纯格式校验函数
+│       └── clipboard.mjs    # 平台剪贴板候选与复制函数
 └── tests/
-    ├── cache.test.mjs       (18 用例：loadJson / saveJson / normalizeKey / read-write / resolveScriptsDir / .orphaned_at 跳过)
-    ├── commits.test.mjs     (6 用例：无参数退出码 / 无缓存走 since-midnight / 缓存命中走 sha..HEAD / 空日志 / 非 git 仓库)
-    ├── validator.test.mjs   (10 用例：happy / edge / error)
-    ├── cli.test.mjs         (6 用例：shim 的 stdin 和 argv 接线)
-    └── clipboard.test.mjs   (17 用例：平台检测 / 复制逻辑 / CLI shim 集成)
+    ├── cache.test.mjs
+    ├── commits.test.mjs
+    ├── cli.test.mjs
+    ├── validator.test.mjs
+    └── clipboard.test.mjs
 ```
 
-**关键设计决策**：
+Node 脚本使用 `node:` 标准库并以 `os.homedir()` 获得默认目录，兼容 Linux、macOS 与 Windows。测试覆盖正常路径、边界条件与错误路径。
 
-- **realpath 标准化键**：`normalizeKey` 用 `fs.realpathSync` 解析软链接，再 fallback 到 `path.resolve`，避免同一仓库因路径形式不同产生多条缓存记录
-- **`_` 前缀键保留**：JSON 中以 `_` 开头的键被 `loadJson` 过滤，保留给未来元数据扩展使用
-- **单指令路径解析**：SKILL.md 中 `cache.mjs resolve` 内部依次在 cwd 和 `~/.claude/plugins/cache` 中搜索锚文件，最终兜底到脚本自身目录，始终返回有效路径，无需 SKILL.md 侧的 bash 条件判断
-- **commits.mjs 封装分支逻辑**：缓存命中时使用 `<sha>..HEAD` 增量查询，缺失时使用 `--since=midnight` 全天查询；逻辑集中在 Node.js 脚本中，SKILL.md 只调用一行命令
-- **validator 纯函数化**：`validate(text)` 返回 `string[]`，无 IO 依赖，shim 处理 stdin 和退出码；方便单元测试和 Claude 内联调用
+## 运行测试
 
-**运行测试**：
-
-```bash
-cd skills/daily-report && npm test
+```text
+cd skills/daily-report
+npm test
 ```
-
-覆盖 57 个用例：缓存 I/O（18）、commits 逻辑（6）、格式校验（10）、CLI 接线（6）、剪贴板（17）。
 
 ## 限制
 
-- **git-only**：不支持非 git 目录
-- **单 author 过滤**：通过 `git config user.email` 识别作者；配置了多个邮箱时可能漏报；bot/co-author 提交不会纳入
-- **输出语言固定为 zh-CN**：这是业务要求，非配置项
-- **压缩比无强制约束**：40–50% 目标由 Claude 的语言理解能力保证，非代码层面的硬限制
-- **`last-report.txt`**：部分安装路径下可能残留该文件（早期调试遗留），可安全手动删除，不影响功能
+- 只按 `git config user.email` 过滤作者。多邮箱、bot 或仅 co-author 的工作可能不被纳入。
+- 只汇总本地可见的、从当天本地午夜起的提交；远端未拉取的分支不可见。
+- 工作内容压缩和模块归类由模型生成，格式由脚本校验，但语义准确性仍应由调用者审阅。
+- 剪贴板依赖系统工具：macOS 的 `pbcopy`、Windows 的 `clip`、Wayland 的 `wl-copy`、X11 的 `xclip`/`xsel`；不可用时日报仍会输出。

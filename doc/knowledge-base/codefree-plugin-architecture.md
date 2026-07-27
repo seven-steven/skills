@@ -34,7 +34,7 @@ plugins/codefree/
 │       ├── args.mjs             # parseArgs / splitRawArgumentString
 │       ├── job-control.mjs      # 查询/快照辅助函数
 │       └── render.mjs           # 所有子命令的 Markdown 渲染
-└── tests/                       # 75 个测试，全部通过（node:test）
+├── tests/                       # 106 个测试，全部通过（node:test）
 ```
 
 ---
@@ -82,7 +82,7 @@ child.unref();
 
 ### Cancel 实现
 
-- POSIX：`process.kill(-pid, "SIGTERM")` 杀进程组，5s 后 SIGKILL 兜底
+- POSIX：`process.kill(-pid, "SIGTERM")` 终止进程组；组不可用时向子进程发送 `SIGTERM`
 - Win32：`taskkill /T /F /PID <pid>`
 - 写入 `status: "cancelled"`
 
@@ -129,6 +129,16 @@ spawn("codefree", argv, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
 
 ---
 
+## 内部 Skill 协议
+
+`codefree:codefree-task` 仅在其单次 companion-script 调用之前使用 `codefree-prompting`：具体任务最小透传；可串行复合任务完整保留；范围冲突或未知时将澄清请求交还调用方。它不读取仓库来猜测路径、验收项或约束。
+
+codefree 返回后，subagent 使用 `codefree-result-handling`：先保留原始结果的顺序、路径、行号、diff 与不确定性，再可选添加可追溯的 summary/index；severity 只能附加。最后以正向终止协议将控制权返回调用方，不 fallback、不重试、不自行修改。
+
+`/codefree:task --background` 直接调用 companion script 以立即返回 job ID，因此不经过 subagent 的结果呈现阶段；后续状态和原始结果由 `/codefree:status` 与 `/codefree:result` 获取。
+
+---
+
 ## 测试结构
 
 ```
@@ -139,6 +149,7 @@ tests/
 ├── render.test.mjs         # 11 个用例：所有渲染函数
 ├── job-control.test.mjs    # 15 个用例：查询/快照/resolve 函数
 ├── companion.test.mjs      # 12 个 e2e 用例：四件套完整流程
+├── subagent-skills.test.mjs # 7 个用例：内部 skill 指令与转发/终止协议
 ├── helpers.mjs             # 测试基础设施（sandbox、fake bin、waitFor）
 └── fake-codefree-fixture.mjs  # fake codefree（happy/fail/slow 模式）
 ```

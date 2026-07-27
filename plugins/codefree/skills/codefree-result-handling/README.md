@@ -2,48 +2,40 @@
 
 ## 用途
 
-规范 `codefree:codefree-task` subagent 在任务完成后的输出呈现方式与失败处理边界。
-
-codefree 的输出可能包含文件差异、行号、错误日志、假设标注等多种格式。本 skill 确保这些信息被如实呈现（不被裁剪或重新解释），并在失败或部分成功时给出明确的停止信号，防止 subagent 越权"修复"本应汇报的问题。
+规范 `codefree:codefree-task` subagent 在 codefree 返回后的结果呈现和终止边界。它将**原始结果**与可选的**派生摘要/索引**分层，避免摘要改写或取代 codefree 的证据记录。
 
 ## 使用方式
 
 本 skill 的 `user-invocable: false`，**不能由用户直接触发**。
 
-仅由 `codefree:codefree-task` subagent 在处理 codefree 输出阶段调用。subagent 执行完 codefree CLI 后，依据本 skill 的指令决定如何呈现结果、何时停止、如何汇报错误。
+仅由 `codefree:codefree-task` subagent 在 codefree CLI 返回后使用。subagent 先返回原始输出，再按需要补充明确标记的导航性摘要或文件索引，随后执行正向终止协议并将控制权交回调用方。
 
 ## 配置
 
-无环境变量。本 skill 仅是 prompt 指令，不包含脚本，无任何运行时配置项。
+无环境变量。本 skill 仅是 prompt 指令，不包含脚本或运行时配置项。
 
 ## 示例
 
-**正常完成**（codefree 成功修改文件）：
+**原始结果优先**：
 
-subagent 按本 skill 规则，列出 codefree 修改过的文件列表，原样输出 diff 或报告内容，然后**停止**，不做额外修改或跟进操作。
+若 codefree 按顺序输出路径、行号、diff 和“可能仍有竞态条件”的提示，subagent 按原顺序原样呈现。可在原始内容之后增加“文件索引”或为该已有发现加上 severity 标签，但不会移动、改写或省略其路径、行号、diff 或不确定性标记。
 
-**失败**（codefree CLI 报错退出）：
+**失败**：
 
-subagent 从 stderr 中提取最具可操作性的若干行，向用户汇报失败原因，**不自行实现该任务作为 fallback**。示例输出：
+若 CLI 返回错误，subagent 返回原始错误输出。缺少 codefree 或认证时，会说明需要安装 codefree 或配置 `CODEFREE_BIN`。随后明确说明本次委派已结束并将控制权交回调用方；不会自行实现、重试或执行额外命令。
 
-```
-codefree 任务失败：
-  - Error: codefree binary not found. Please install codefree or set CODEFREE_BIN.
-请安装 codefree 或通过 CODEFREE_BIN 环境变量指定二进制路径。
-```
+**部分完成**：
 
-**部分成功**（codefree 完成了部分工作后退出）：
-
-subagent 说明已完成的内容与未完成的内容，让调用方决定下一步，不擅自追加操作。
+subagent 保留 codefree 对已完成和未完成事项的原始说明，要求调用方选择下一步，然后结束该次委派。
 
 ## 实现架构
 
-本 skill 不包含任何 Node.js 脚本，是纯 prompt 形式的 skill。
+本 skill 是纯 prompt skill，不含 Node.js 脚本。`codefree:codefree-task` 将 raw result 作为权威记录；可选派生 summary/index 仅用于导航，并且每一项都必须能追溯到原始结果。severity 只能附加，不能改变原始内容。最后通过正向终止协议结束，而非尝试 fallback 或重试。
 
-`codefree:codefree-task` subagent 在呈现 codefree 输出时加载本 skill（`codefree-result-handling`）的 SKILL.md 指令作为上下文。subagent 遵循 SKILL.md 中的输出规则：保留原始结构、按严重程度排序发现项、保留不确定性标注、在最终输出后显式停止。这些规则共同构成 subagent 的"输出阶段协议"。
+对应的 instruction/contract tests 位于 `plugins/codefree/tests/subagent-skills.test.mjs`，验证 raw/derived 分层、顺序与证据保留、severity 附加边界，以及不 fallback、不重试、不自行修改的终止约定。
 
 ## 限制
 
-- **仅在 codefree-task subagent 内有效**：在其他上下文中加载此 skill 不会产生预期效果。
-- **不自动重试**：失败时本 skill 指示 subagent 停止并汇报，不触发自动重试逻辑；重试由调用方决定。
-- **不解析 codefree 内部格式**：本 skill 依赖 codefree 以标准 stdout/stderr 方式输出，对 codefree 内部协议的变更不具备鲁棒性。
+- **仅在 codefree-task subagent 内有效**：命令层直接执行的后台任务不会经过这个 subagent；其 job ID/状态输出由 companion script 提供。
+- **不解析或修复 codefree 结果**：skill 不会验证 diff 的正确性、补全代码或解决原始结果中的问题。
+- **不自动重试**：后续委派必须由调用方显式决定。

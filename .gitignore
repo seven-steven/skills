@@ -16,6 +16,9 @@ yarn-error.log*
 .npm/
 .yarn/
 
+# Generated package-manager lockfile (the git-commit skill has no dependencies)
+skills/git-commit/pnpm-lock.yaml
+
 # Test / build artifacts
 coverage/
 .nyc_output/

@@ -1,104 +1,79 @@
 ---
 name: web-fetch
 description: >-
-  Fetch a URL and return clean reader-friendly Markdown by trying r.jina.ai →
-  markdown.new → defuddle.md in order, falling back when one fails. Use this
-  whenever the user shares a URL and wants to read, summarize, quote, translate,
-  extract from, or otherwise work with the page's actual content — even if they
-  don't literally say "fetch". Prefer this over the built-in WebFetch tool when
-  you need the raw page text instead of a model-summarized answer, when the
-  built-in WebFetch is blocked by the network, or when the page lives behind a
-  region/IP wall and a proxy is required. Honors a WEB_FETCH_PROXY variable
-  exported from settings.json's `env` block.
+  Retrieve a URL through the r.jina.ai → markdown.new → defuddle.md cascade and
+  return the exact, source-tagged Markdown. Use only when the user explicitly
+  needs auditable original Markdown, the built-in WebFetch is blocked or fails,
+  or the user explicitly requests WEB_FETCH_PROXY or this three-service fallback.
+  Do not invoke for ordinary URL summaries, reading, translation, or extraction
+  that the built-in WebFetch can perform.
 argument-hint: <url>
 ---
 
 ## Task
 
-Convert a URL into clean Markdown so its content can be cited, summarized,
-translated, or excerpted in the answer.
+Retrieve an HTTP(S) URL as clean, auditable Markdown when this skill's narrow
+trigger conditions apply.
 
-## Path Resolution
+## Path resolution
 
-This skill bundles a Node.js script under its installation directory. Before
-running anything, resolve the absolute path of the `scripts/` directory and
-store it as `$SKILL_SCRIPTS_DIR`:
+The skill load context provides a **Base directory**. Use that directory as the
+installation root for this skill. Run the bundled script at:
 
-1. Try the relative path `scripts/` first (works for project-level installs).
-2. If that fails, search for the anchor file `fetch.mjs` under:
-   - `~/.claude/plugins/cache/**/web-fetch/scripts/fetch.mjs` (global plugin install)
-   - `<plugin-source>/skills/web-fetch/scripts/fetch.mjs` (project-level install via marketplace)
-3. Use the resolved path in every command below.
+```
+<Base directory>/scripts/fetch.mjs
+```
+
+Do not scan plugin caches or search the filesystem for another copy of the
+script.
 
 ## Steps
 
-1. Resolve `$SKILL_SCRIPTS_DIR` per **Path Resolution**.
+1. Verify that the supplied URL is HTTP or HTTPS.
 2. Run:
    ```
-   node "$SKILL_SCRIPTS_DIR/fetch.mjs" "<url>"
+   node "<Base directory>/scripts/fetch.mjs" "<url>"
    ```
-3. On success the script writes one source-tag comment line followed by the
-   Markdown body, e.g.:
-   ```
-   <!-- web-fetch: source=r.jina.ai url=https://example.com -->
-   # Example Domain
-   ...
-   ```
-4. Read the Markdown directly. Keep the source tag in any quoted excerpt so the
-   user can audit which fallback served the request.
+3. On success, read the Markdown emitted after its source-tag comment. Preserve
+   the comment when quoting an excerpt so the fallback source remains auditable.
 
 ## Failure handling
 
-- **Exit 1** — all three endpoints failed. The script prints a per-endpoint
-  reason to stderr. Show the relevant lines and suggest one of:
-  - Set `WEB_FETCH_PROXY` (see **Configuration**) if the failures look like
-    network errors (`ETIMEDOUT`, `ECONNREFUSED`, `ENOTFOUND`, `CONNECT failed`).
-  - Verify the URL is correct and publicly reachable (`HTTP 4xx` on every
-    endpoint usually means the upstream URL itself is bad).
-  - Fall back to the built-in `WebFetch` for a model-summarized answer when
-    the user is okay with a non-original-text response.
-- **Exit 2** — no URL was passed. Re-invoke with the URL as the first arg.
+- **Exit 1** — every fallback endpoint failed. Show the relevant per-endpoint
+  errors. Recommend `WEB_FETCH_PROXY` for connection, timeout, or DNS errors;
+  otherwise suggest checking that the upstream URL is public and reachable.
+- **Exit 2** — the URL argument is missing or invalid. Ask for a valid absolute
+  `http://` or `https://` URL.
 
 ## Configuration
 
-Set the proxy in `.claude/settings.json` (or `~/.claude/settings.json`) under
-the `env` block — Claude Code injects it into the spawned script's
-environment automatically:
+Set `WEB_FETCH_PROXY` in the `env` block of `.claude/settings.json` or
+`~/.claude/settings.json`:
 
 ```json
 {
   "env": {
-    "WEB_FETCH_PROXY": "http://proxy.example:8080"
+    "WEB_FETCH_PROXY": "socks5h://127.0.0.1:1080"
   }
 }
 ```
 
-Notes:
-
-- An empty string is treated as "no proxy".
-- The URL scheme selects the tunnel protocol: `http://...` uses HTTP `CONNECT`;
-  `socks5://...` and `socks5h://...` use SOCKS5 (no-auth, hostname-style).
-  Other schemes (`socks4://`, `https://` proxy, etc.) are not supported.
-- Basic auth in HTTP CONNECT proxy URLs works: `http://user:pass@proxy.example:8080`.
-- TLS is terminated at the script, not at the proxy.
+- An empty value disables the proxy.
+- `http://...` uses HTTP `CONNECT`.
+- `socks5://...` resolves the target locally and sends an IPv4 or IPv6 SOCKS5
+  address. `socks5h://...` sends the target hostname to the proxy for proxy-side
+  DNS resolution.
+- HTTP Basic and SOCKS5 username/password authentication are supported.
+- SOCKS4 and TLS (`https://`) proxy URLs are unsupported.
 
 ## Output format
 
-The first line of stdout is always a single HTML comment:
+Successful stdout begins with:
 
 ```
 <!-- web-fetch: source=<endpoint> url=<requested-url> -->
 ```
 
-The rest of stdout is the Markdown body returned by the winning endpoint,
-verbatim. Trailing newline is normalized.
-
-## Notes
-
-- Cascade order is fixed: `r.jina.ai` → `markdown.new` → `defuddle.md`. Each
-  endpoint has a 30-second timeout. The first endpoint to return HTTP 2xx with
-  a non-empty body wins; everything else (timeouts, 4xx/5xx, empty body,
-  thrown errors) advances to the next endpoint.
-- Implementation uses Node's standard library only — no `npm install` needed.
-- If all three URL services fail (paywalled SPAs, hard anti-scraping), a
-  future revision may shell out to Scrapling. Not implemented in this version.
+The remaining output is the winning endpoint's Markdown body. The cascade order
+is fixed: `r.jina.ai`, then `markdown.new`, then `defuddle.md`. Each endpoint
+has a 30-second timeout; only a non-empty HTTP 2xx response succeeds.

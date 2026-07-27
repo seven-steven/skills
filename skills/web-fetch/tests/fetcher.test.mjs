@@ -11,6 +11,8 @@ import {
   parseHttpResponse,
   tryEndpoints,
   httpGet,
+  resolveSocksAddress,
+  validateTargetUrl,
 } from "../scripts/lib/fetcher.mjs";
 
 test("buildEndpointUrl - substitutes {url} placeholder verbatim", () => {
@@ -25,6 +27,30 @@ test("buildEndpointUrl - leaves URL with query string and fragment intact", () =
     buildEndpointUrl("https://defuddle.md/{url}", "https://x.test/p?q=1#frag"),
     "https://defuddle.md/https://x.test/p?q=1#frag"
   );
+});
+
+test("validateTargetUrl - accepts HTTP and HTTPS URLs", () => {
+  assert.doesNotThrow(() => validateTargetUrl("https://example.com/path"));
+  assert.doesNotThrow(() => validateTargetUrl("http://example.com"));
+});
+
+test("validateTargetUrl - rejects malformed and unsupported URLs", () => {
+  assert.throws(() => validateTargetUrl("not a URL"), /invalid URL/);
+  assert.throws(() => validateTargetUrl("file:///etc/passwd"), /unsupported URL scheme/);
+});
+
+test("tryEndpoints - invalid URL does not invoke endpoints", async () => {
+  let calls = 0;
+  const result = await tryEndpoints("not a URL", {
+    httpClient: async () => {
+      calls += 1;
+      return { status: 200, body: "unexpected" };
+    },
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.ok, false);
+  assert.equal(result.errors[0].source, "input");
+  assert.match(result.errors[0].message, /invalid URL/);
 });
 
 test("ENDPOINTS - cascade order matches the user-specified spec", () => {
@@ -345,6 +371,45 @@ test("parseHttpResponse - headers are case-insensitive", () => {
 test("parseHttpResponse - missing separator throws", () => {
   const raw = Buffer.from("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n");
   assert.throws(() => parseHttpResponse(raw), /no header\/body separator/);
+});
+
+// ---------------------------------------------------------------------------
+// SOCKS5 proxy tests
+// ---------------------------------------------------------------------------
+
+test("resolveSocksAddress - socks5 resolves DNS to an IPv4 ATYP", async () => {
+  const address = await resolveSocksAddress("socks5:", "origin.test", (_host, _opts, callback) => {
+    callback(null, [{ address: "203.0.113.9", family: 4 }]);
+  });
+  assert.deepEqual(address, Buffer.from([0x01, 203, 0, 113, 9]));
+});
+
+test("resolveSocksAddress - socks5 resolves DNS to an IPv6 ATYP", async () => {
+  const address = await resolveSocksAddress("socks5:", "origin.test", (_host, _opts, callback) => {
+    callback(null, [{ address: "2001:db8::1", family: 6 }]);
+  });
+  assert.deepEqual(
+    address,
+    Buffer.from([0x04, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+  );
+});
+
+test("resolveSocksAddress - socks5h keeps hostname for proxy DNS", async () => {
+  let called = false;
+  const address = await resolveSocksAddress("socks5h:", "origin.test", () => {
+    called = true;
+  });
+  assert.equal(called, false);
+  assert.deepEqual(address, Buffer.from([0x03, 11, ...Buffer.from("origin.test")]));
+});
+
+test("resolveSocksAddress - propagates local DNS failure", async () => {
+  await assert.rejects(
+    resolveSocksAddress("socks5:", "missing.test", (_host, _opts, callback) => {
+      callback(Object.assign(new Error("not found"), { code: "ENOTFOUND" }));
+    }),
+    /not found/
+  );
 });
 
 // ---------------------------------------------------------------------------

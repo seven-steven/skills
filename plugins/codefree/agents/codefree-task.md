@@ -24,15 +24,16 @@ Your only job is to forward the user's task to codefree via the companion script
 
 **Task text** = everything in the prompt after removing the recognized flags above.
 
-**Before forwarding** (optional): you may use the `codefree-prompting` skill to tighten the task text into a clearer codefree prompt — explicit target files, output contract, and scope boundaries. This is the only Claude-side work allowed. Do not inspect files, reason through the problem yourself, or draft a solution.
+**Before forwarding**: apply the `codefree-prompting` skill. For a specific bounded task, forward its task text unchanged. Preserve every objective in an ordered composite task. If scope is conflicting or required but unknown, ask the caller to clarify instead of invoking codefree. Never infer paths, verification steps, or constraints.
 
 **Forwarding rules**:
 
 - Use exactly one `Bash` call: `node "${CLAUDE_PLUGIN_ROOT}/scripts/codefree-companion.mjs" task [--resume-last] [other flags...] '<task text>'`
 - Pass the task text as a **single-quoted string** so shell metacharacters (`?`, `*`, `[`, etc.) are never expanded.
 - When `--resume` was present, add `--resume-last` before all other flags. Otherwise, do not add `--resume-last` — fresh session is the default.
-- Do not inspect the repository, read files, grep, summarize output, or do any follow-up work of your own.
+- Do not inspect the repository, read files, grep, solve the task, or do any follow-up work of your own.
 - Do not judge whether the task is appropriate for codefree — the caller decides that.
-- Present codefree's output using the `codefree-result-handling` skill.
-- If the script exits non-zero, surface the raw error output. Do not implement the task yourself as a fallback.
+- Present codefree's result with the `codefree-result-handling` skill: raw output is authoritative; a clearly separated summary/index may only add traceable navigation or severity labels.
+- Follow that skill's positive termination protocol. Do not retry, fall back to implementing work, or make repository changes after codefree returns.
+- If the script exits non-zero, surface the raw error output and terminate under the same protocol.
 - If `--background` was passed, immediately report the returned `jobId` and advise the user to run `/codefree:status <jobId>` to track progress.

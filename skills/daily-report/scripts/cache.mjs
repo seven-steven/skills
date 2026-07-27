@@ -1,5 +1,13 @@
 #!/usr/bin/env node
-import { readProject, writeProject, readCommit, writeCommit, resolveScriptsDir } from "./lib/cache.mjs";
+import {
+  readProject,
+  writeProject,
+  readCommit,
+  writeCommit,
+  readReportedCommitIds,
+  writeReportedCommitIds,
+  resolveScriptsDir,
+} from "./lib/cache.mjs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +26,6 @@ if (action === "resolve") {
       process.cwd(),
     ],
   });
-  // anchor search exhausted — fall back to this script's own directory
   process.stdout.write((scriptsDir || path.dirname(fileURLToPath(import.meta.url))) + "\n");
   process.exit(0);
 }
@@ -52,6 +59,22 @@ switch (action) {
     if (!sha) { process.stderr.write("Missing argument: commit_id\n"); process.exit(1); }
     writeCommit(repoPath, sha);
     process.stdout.write(`已缓存 commit id: ${sha}\n`);
+    break;
+  }
+  case "read-reported": {
+    process.stdout.write(JSON.stringify(readReportedCommitIds(repoPath)) + "\n");
+    break;
+  }
+  case "write-reported": {
+    const json = process.argv[4];
+    if (!json) { process.stderr.write("Missing argument: commit_ids_json\n"); process.exit(1); }
+    try {
+      writeReportedCommitIds(repoPath, JSON.parse(json));
+    } catch (error) {
+      process.stderr.write(`Invalid reported commit IDs: ${error.message}\n`);
+      process.exit(1);
+    }
+    process.stdout.write("已缓存已汇报 commit IDs\n");
     break;
   }
   default:

@@ -37,6 +37,26 @@ test("cache.mjs write then read - round-trips a project name", () => {
   }
 });
 
+test("cache.mjs write-reported then read-reported - round-trips a commit ID array", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "daily-report-cli-"));
+  try {
+    const ids = ["a".repeat(40), "b".repeat(40)];
+    const write = run("cache.mjs", ["write-reported", "/repo/test", JSON.stringify(ids)], { cacheDir: dir });
+    const read = run("cache.mjs", ["read-reported", "/repo/test"], { cacheDir: dir });
+    assert.equal(write.status, 0, write.stderr);
+    assert.equal(read.status, 0, read.stderr);
+    assert.deepEqual(JSON.parse(read.stdout), ids);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cache.mjs write-reported - rejects malformed JSON", () => {
+  const r = run("cache.mjs", ["write-reported", "/repo/test", "not-json"]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Invalid reported commit IDs/);
+});
+
 test("cache.mjs read - exits 0 and prints nothing for unknown repo", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "daily-report-cli-"));
   try {

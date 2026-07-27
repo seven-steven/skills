@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readCommit } from "./lib/cache.mjs";
+import { readReportedCommitIds } from "./lib/cache.mjs";
 import { spawnSync } from "node:child_process";
 
 const [,, repoRoot, userEmail] = process.argv;
@@ -9,15 +9,11 @@ if (!repoRoot || !userEmail) {
   process.exit(1);
 }
 
-const cachedSha = readCommit(repoRoot);
-
-const gitArgs = ["-C", repoRoot, "log", `--author=${userEmail}`, "--pretty=format:%h %s", "--all"];
-if (cachedSha) {
-  gitArgs.push(`${cachedSha}..HEAD`);
-} else {
-  gitArgs.push("--since=midnight");
-}
-
+const reportedIds = new Set(readReportedCommitIds(repoRoot));
+const gitArgs = [
+  "-C", repoRoot, "log", `--author=${userEmail}`, "--since=midnight",
+  "--all", "--pretty=format:%H%x09%s",
+];
 const r = spawnSync("git", gitArgs, { encoding: "utf8" });
 if (r.error) {
   process.stderr.write(`git error: ${r.error.message}\n`);
@@ -28,4 +24,12 @@ if (r.status !== 0) {
   process.exit(r.status ?? 1);
 }
 
-process.stdout.write(r.stdout);
+const commits = r.stdout.split("\n")
+  .filter(Boolean)
+  .map((line) => {
+    const tab = line.indexOf("\t");
+    return { id: line.slice(0, tab), subject: line.slice(tab + 1) };
+  })
+  .filter((commit) => commit.id && !reportedIds.has(commit.id));
+
+process.stdout.write(commits.map(({ id, subject }) => `${id}\t${subject}`).join("\n"));

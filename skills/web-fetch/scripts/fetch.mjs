@@ -7,6 +7,17 @@ if (!url) {
   process.exit(2);
 }
 
+let parsedUrl;
+try {
+  parsedUrl = new URL(url);
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error(`unsupported URL scheme: ${parsedUrl.protocol.replace(":", "")}`);
+  }
+} catch (error) {
+  process.stderr.write(`web-fetch: invalid URL: ${error.message}\n`);
+  process.exit(2);
+}
+
 const proxy = (process.env.WEB_FETCH_PROXY || "").trim() || null;
 
 const result = await tryEndpoints(url, { proxy });

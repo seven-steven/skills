@@ -2,143 +2,99 @@
 name: daily-report
 disable-model-invocation: true
 description: >-
-  Generate a Chinese daily work report (工作日报) from today's git commit
-  history, formatted as one bullet per line "- ProjectName-Module-Work；".
-  Resolves the project display name from a CLI argument, a per-repo cache,
-  the git remote URL slug, or the current directory basename — in that order.
-  Caches the latest reported commit hash per repo so the next invocation only
-  summarizes new commits since last report. Use this whenever the user says
-  "工作日报", "日报", "daily report", "工作总结", or asks to summarize today's
-  git work as a report. Output is validated by a bundled formatter before being
-  shown to the user.
-argument-hint: <project-name> (optional; falls back to cache → git remote slug → cwd basename)
-allowed-tools: Bash(git remote:*), Bash(git rev-parse:*), Bash(git config:*), Bash(git log:*), Bash(node:*), Bash(basename:*), Bash(find:*), Bash(echo:*)
+  Explicitly invoke /daily-report whenever the user asks for a Chinese work daily
+  report (工作日报/日报/daily report/工作总结) from today's Git commits, including
+  an incremental update since the prior report. It produces validated Chinese
+  bullets, resolves and caches the project display name, and reports clipboard
+  copy status. Call /daily-report [project-name] directly; do not merely explain
+  how to create the report.
+argument-hint: <project-name> (optional; falls back to cache → git remote slug → repository basename)
+allowed-tools: Bash(git rev-parse:*), Bash(git config:*), Bash(git remote:*), Bash(git log:*), Bash(node *), Bash(pwd), Bash
 ---
 
 ## Task
 
-Analyze today's git commits for the current user and generate a Chinese daily work report (工作日报).
+Generate a Chinese daily work report from today's Git commits authored by the configured Git email. The report is incremental: each successful report remembers every included commit ID for the local calendar day.
 
-## Path Resolution
+## Base directory
 
-Determine the absolute path of the `scripts/` directory before any script call.
-Store the result as `$SKILL_SCRIPTS_DIR`.
+At skill load time, the base directory is the directory containing this `SKILL.md`. Use that load-time Base directory to form an absolute scripts path:
 
-```bash
-SKILL_SCRIPTS_DIR=$(node scripts/cache.mjs resolve)
-```
+`<Base directory>/scripts`
 
-## Context
+Use the resulting absolute path in every Node command below. Do not locate scripts by searching the working directory and do not use shell variables, command substitution, shell conditionals, pipes, `echo`, or platform-specific shell syntax.
 
-- Git context: !`root=$(git rev-parse --show-toplevel 2>/dev/null); email=$(git config user.email 2>/dev/null); remote=$(git remote get-url origin 2>/dev/null || echo ""); echo "repo_root=$root"; echo "user_email=$email"; echo "remote_url=$remote"`
-- Latest commit: !`git log -1 --author="$(git config user.email)" --pretty=format:"%H" --all 2>/dev/null`
+## Collect Git context
 
-## Steps
+Run these commands separately:
 
-1. Resolve `$SKILL_SCRIPTS_DIR` using the **Path Resolution** block above.
+1. `git rev-parse --show-toplevel` to obtain `<repo_root>`. If it fails, state that the skill requires a Git repository and stop.
+2. `git config user.email` to obtain `<user_email>`. If it is empty or fails, state that Git `user.email` must be configured and stop.
+3. `git remote get-url origin` only if a project name must fall back to the remote slug.
+4. `node "<Base directory>/scripts/commits.mjs" "<repo_root>" "<user_email>"`.
 
-2. Fetch today's commits:
+The commits script always runs `git log --since=midnight --all` and removes IDs already recorded for today. Its output is one `full-sha<TAB>subject` per unreported commit. This ID-set design is required because `<cached-sha>..HEAD` is not an exact incremental boundary under `--all`: commits reachable only from another branch could otherwise be missed, while a cached `HEAD` would not represent all previously reported branch tips.
 
-   ```bash
-   node "$SKILL_SCRIPTS_DIR/commits.mjs" <repo_root> <user_email>
+If the command returns no lines, emit exactly one terminal state:
+
+`暂无新提交，无需生成日报。`
+
+Do not validate, copy, or change either cache in this state.
+
+## Resolve project name
+
+Apply this priority order:
+
+1. If the optional skill argument is non-empty, use it and call `node "<Base directory>/scripts/cache.mjs" write "<repo_root>" "<project_name>"`.
+2. Otherwise call `node "<Base directory>/scripts/cache.mjs" read "<repo_root>"`; use its non-empty stdout.
+3. Otherwise derive the final path component of the `origin` remote URL after removing a trailing `.git`.
+4. If there is no usable remote, use the final component of `<repo_root>`.
+
+Cache write errors do not prevent generation; retain the error for the final status only if the report otherwise succeeds.
+
+## Produce and validate the report
+
+1. Turn each unreported commit subject into concise zh-CN work content.
+2. Group related content by business module and compress toward 40–50% of the raw commit count where that improves clarity.
+3. Produce one line per entry in exactly one format:
+
+   ```text
+   - ProjectName-WorkContent；
+   - ProjectName-BusinessModule-WorkContent；
    ```
 
-   If there are no commits, tell the user there is nothing to report and exit.
+4. Write the complete draft to a temporary text file using the available file tool. Run `node "<Base directory>/scripts/validate.mjs" "<draft_file>"`.
+5. If validation fails, revise the file and validate again. Never advance the commit cache before validation succeeds.
 
-3. Determine project name (priority order):
-   - **CLI argument** (`$ARGUMENTS`): if provided, use it and persist:
-     `node "$SKILL_SCRIPTS_DIR/cache.mjs" write <repo_root> <project-name>`
-   - **Cache**: `node "$SKILL_SCRIPTS_DIR/cache.mjs" read <repo_root>`
-   - **Git remote slug**: strip the `.git` suffix and last path component from the remote URL
-   - **Fallback**: `basename <repo_root>`
+## Completion states and cache order
 
-4. Generate the report following the **Output Format** and **Compression Rules** below.
+The following states are mutually exclusive; emit exactly one of them.
 
-5. Validate the draft:
+### No-new-commits
 
-   ```bash
-   echo '<draft>' | node "$SKILL_SCRIPTS_DIR/validate.mjs"
-   ```
+Defined above. No report, validation, clipboard action, project-cache write (unless a supplied name was explicitly written before detection), or commit-cache write occurs.
 
-   If validation fails, fix the format based on the error messages and repeat until it passes.
+### Validation-failed
 
-6. Persist progress:
+If a valid report cannot be produced, state the validation failure and stop. Do not copy to the clipboard. Do not write reported commit IDs. Project-name caching may already have occurred.
 
-   ```bash
-   node "$SKILL_SCRIPTS_DIR/cache.mjs" write-commit <repo_root> <latest_commit_hash>
-   ```
+### Reported
 
-7. Copy to clipboard:
+Only after validation succeeds:
 
-   ```bash
-   echo '<validated_report>' | node "$SKILL_SCRIPTS_DIR/clipboard.mjs"
-   ```
+1. Copy the validated file with `node "<Base directory>/scripts/clipboard.mjs" "<draft_file>"`.
+2. Regardless of clipboard success, call `node "<Base directory>/scripts/cache.mjs" write-reported "<repo_root>" '<JSON array of every full SHA returned by commits.mjs>'`.
+3. If the reported-ID cache write fails, emit the validated bullets and state that cache persistence failed; do not claim a successful incremental update.
+4. If it succeeds, emit the validated bullets followed by exactly one clipboard status line:
+   - `（已复制到剪贴板）` when clipboard stdout reports success.
+   - `（剪贴板复制失败：<reason>，请手动复制）` when clipboard stderr reports failure.
+   - `（已跳过剪贴板复制）` when stdout reports the skip setting.
 
-   Capture the script output:
-   - stdout `已复制到剪贴板（<tool>）` = success
-   - stderr `复制到剪贴板失败：<reason>` = failure
-   - stdout `跳过剪贴板复制` = skipped (`DAILY_REPORT_NO_CLIPBOARD=1`)
+Clipboard failure is not a report failure: its cache advancement happens after the copy attempt so a successfully generated report is not repeated next time. Cache advancement is forbidden when there are no commits or validation failed.
 
-   Always proceed to step 8 regardless of outcome — do not abort.
+## Configuration and limits
 
-8. Emit the validated bullet lines — no preamble, no explanation. Then append a single short status line based on clipboard.mjs output:
-   - Success: `（已复制到剪贴板）`
-   - Failure: `（剪贴板复制失败：<reason>，请手动复制）`
-   - Skipped: `（已跳过剪贴板复制）`
-
-## Output Format
-
-Each entry on its own line, strictly:
-
-```
-- ProjectName-WorkContent；
-- ProjectName-BusinessModule-WorkContent；
-```
-
-### Compression example
-
-Raw commits:
-
-```
-- ProjectName-ModelA-完成功能A；
-- ProjectName-ModelA-修复Bug；
-- ProjectName-FunctionB-重构代码；
-- ProjectName-FunctionB-补充测试；
-- ProjectName-TaskC-文档更新；
-```
-
-After compression (target 40–50% of raw count):
-
-```
-- ProjectName-ModelA-完成功能A、修复Bug；
-- ProjectName-FunctionB-重构并补充测试；
-- ProjectName-TaskC-文档更新；
-```
-
-## Compression Rules
-
-- Group entries by `BusinessModule`; merge work items with Chinese enumeration comma `、`
-- Closely related modules may be consolidated into a higher-level category
-- Strip redundant verbs and filler words; keep only the core action
-- Target: reduce final entry count to ~40–50% of the raw commit count
-
-## Failure Handling
-
-- If `validate.mjs` exits non-zero: read the error output, fix the format, and re-pipe until clean
-- If `cache.mjs` exits non-zero: still produce the report, skip cache persistence, tell the user
-- If `clipboard.mjs` writes to stderr: surface the failure reason to the user but still emit the report
-
-## Configuration
-
-Cache files live in `~/.claude/skills/daily-report/` (overridable via `DAILY_REPORT_CACHE_DIR` env var):
-
-- `project-name-cache.json` — maps `realpath(repo)` → display project name
-- `commit-cache.json` — maps `realpath(repo)` → last reported commit SHA
-- `DAILY_REPORT_NO_CLIPBOARD=1` — disables auto-copy (useful for CI, headless SSH, or pipeline use)
-
-## Notes
-
-- Commits are filtered by `git config user.email`; users with multiple git identities may miss some commits
-- `--all` includes commits on all branches, not just the current one
-- To force a full-day rerun (ignore the commit cache), delete the repo's entry from `commit-cache.json`
-- Work content should be in zh-CN, concise and clear
+- Cache directory: `~/.claude/skills/daily-report/`, overridden by `DAILY_REPORT_CACHE_DIR`.
+- Set `DAILY_REPORT_NO_CLIPBOARD=1` to skip copying.
+- Commits are filtered by `git config user.email`; alternate identities and co-authored work can be omitted.
+- The per-day ID set resets on the next local calendar day. Delete the repository entry in `commit-cache.json` to force a same-day rerun.

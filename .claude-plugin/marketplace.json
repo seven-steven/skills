@@ -11,7 +11,7 @@
       "name": "git-commit",
       "source": "./skills",
       "strict": false,
-      "description": "根据暂存的变更生成 git commit 并提交",
+      "description": "根据当前相关变更生成并提交 Angular/Conventional Commit，支持 submodule 提交流程",
       "skills": [
         "./git-commit"
       ]
@@ -20,7 +20,7 @@
       "name": "daily-report",
       "source": "./skills",
       "strict": false,
-      "description": "从 git 提交历史生成工作日报",
+      "description": "通过显式调用从当前用户今日 git 提交生成增量工作日报",
       "skills": [
         "./daily-report"
       ]
@@ -29,7 +29,7 @@
       "name": "web-fetch",
       "source": "./skills",
       "strict": false,
-      "description": "通过 r.jina.ai → markdown.new → defuddle.md 回退链获取 URL 并返回干净的 Markdown，支持 WEB_FETCH_PROXY 代理",
+      "description": "在需要可审计原始 Markdown、网络回退或代理时，通过 r.jina.ai → markdown.new → defuddle.md 获取 URL 内容",
       "skills": [
         "./web-fetch"
       ]
@@ -38,7 +38,7 @@
       "name": "codefree",
       "source": "./plugins/codefree",
       "strict": false,
-      "description": "在 Claude Code 内将编码任务委托给 codefree（qwen-code fork）CLI 执行。用户提到\"研发云\"时必须使用。"
+      "description": "在 Claude Code 内通过命令与 subagent 将编码任务委托给 codefree（qwen-code fork）CLI；“研发云”路由由上层编排策略配置。"
     }
   ]
 }

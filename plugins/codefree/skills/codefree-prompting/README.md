@@ -2,57 +2,57 @@
 
 ## 用途
 
-将用户的自然语言任务描述整理为 codefree 能稳定执行的结构化 prompt。
-
-codefree（基于 qwen-code）对模糊、复合或缺少文件范围的指令容易产生偏差。本 skill 通过强制 prompt 包含明确目标、输入文件、输出契约和负向约束，减少 codefree 的猜测空间，提高任务执行的可预期性。
+将传给 `codefree:codefree-task` 的用户任务忠实整理为可转发给 codefree 的 prompt。完成标准是**不丢失用户目标**：本 skill 只澄清已知信息，绝不把猜测当作任务要求。
 
 ## 使用方式
 
 本 skill 的 `user-invocable: false`，**不能由用户直接触发**。
 
-仅由 `codefree:codefree-task` subagent 在其工作流程内部调用：当检测到任务描述模糊、复合或缺少文件范围时，subagent 先执行本 skill 完成 prompt 改写，再将改写后的 prompt 传递给 codefree CLI。如果任务描述已经具体且有明确边界，subagent 可跳过本 skill 直接转发。
+仅由 `codefree:codefree-task` subagent 在转发任务前使用。它在移除命令标志后按如下规则处理任务：
+
+- 具体且边界明确的任务最小透传，不额外套 XML、补路径或添加验收步骤。
+- 可以在一次有序执行中完成的复合任务，保留全部目标及其顺序；不会只挑“主要目标”。
+- 任务有冲突，或安全执行所需的范围未知时，向调用方说明具体歧义并请求澄清；不会猜测文件、排除项或偏好的实现方案。
+- `<scope>`、`<output_contract>`、`<constraints>` 只转述调用方明确给出的内容；没有依据的块会省略。
 
 ## 配置
 
-无环境变量。本 skill 仅是 prompt 指令，不包含脚本，无任何运行时配置项。
+无环境变量。本 skill 仅包含 prompt 指令，没有脚本或运行时配置。
 
 ## 示例
 
-**触发改写**（任务模糊，缺少文件范围）：
+**最小透传**（任务已具体且有边界）：
 
-> 用户：帮我优化一下代码
+> 用户：`/codefree:task Fix all TypeScript errors in src/components/Button.tsx`
 
-subagent 判断为模糊任务，调用本 skill 改写为：
+subagent 移除命令标志后，原样转发 `Fix all TypeScript errors in src/components/Button.tsx`。
 
-```xml
-<task>
-  对 src/api/user.ts 中的 createUser 函数进行性能优化，减少数据库查询次数。
-</task>
-<scope>
-  仅修改 src/api/user.ts。不触碰测试文件、迁移文件及其他模块。
-</scope>
-<output_contract>
-  修改完成后运行 npm test，所有测试通过。将变更内容以文件差异形式输出到 stdout。
-</output_contract>
-<constraints>
-  不安装新依赖。不修改接口签名。
-</constraints>
-```
+**保留串行复合目标**：
 
-**跳过改写**（任务已具体）：
+> 用户：先迁移 `src/api/` 到新客户端，再更新对应测试，最后运行 `npm test`。
 
-> 用户：/codefree:task Fix all TypeScript errors in src/components/Button.tsx
+subagent 可用 `<task>` 按原顺序列出这三个目标，但不会删去测试或验证步骤，也不会自行增加限制。
 
-任务已包含目标、文件范围和隐式输出契约，subagent 直接转发，不调用本 skill。
+**请求澄清**（范围不足）：
+
+> 用户：帮我优化一下代码。
+
+subagent 不会捏造 `src/api/user.ts`、函数名或测试命令，而是请求调用方指定要优化的目录/文件和期望结果。收到澄清前不会调用 codefree。
+
+**忠实转述约束**：
+
+> 用户：只修改 `src/api/user.ts`，不要安装依赖；修改后运行 `npm test`。
+
+subagent 可将这三项分别放入 `<scope>`、`<constraints>` 和 `<output_contract>`，不附加其他未说明的约束。
 
 ## 实现架构
 
-本 skill 不包含任何 Node.js 脚本，是纯 prompt 形式的 skill。
+本 skill 是纯 prompt skill，不含 Node.js 脚本。`codefree:codefree-task` 在执行其唯一一次 companion-script 调用前加载本 skill。它仅进行任务保真检查、必要时请求调用方澄清，或用中性的 XML 结构重述已有信息；不会读取仓库或制定解决方案。
 
-`codefree:codefree-task` subagent 在执行任务前会加载本 skill（`codefree-prompting`）的 SKILL.md 指令作为其上下文的一部分。subagent 依据 SKILL.md 中的 prompt 规则，对输入任务进行判断：符合条件时原地改写，否则透传。改写后的 prompt 结构遵循 `<task>/<scope>/<output_contract>/<constraints>` 四块 XML 格式，保证 codefree 能稳定解析。
+对应的 instruction/contract tests 位于 `plugins/codefree/tests/subagent-skills.test.mjs`，验证元数据、最小透传、复合目标、澄清边界和约束保真要求。
 
 ## 限制
 
-- **仅在 codefree-task subagent 内有效**：在其他 skill 或主 Claude 线程中加载此 skill 不会产生预期效果。
-- **不处理多任务拆分**：当任务包含多个独立目标时，本 skill 只保留主要目标，不自动拆分为多次调用。
-- **不保证 codefree 一定执行成功**：改写 prompt 只降低失败概率，不消除 codefree 本身的限制（如不支持的操作、认证失败等）。
+- **仅在 codefree-task subagent 内有效**：其他上下文加载不会形成该 subagent 的转发边界。
+- **不解决范围歧义**：它会把歧义返还给调用方，而不是分析仓库来猜测范围。
+- **不保证 codefree 执行成功**：任务保真只避免 Claude 侧丢失或捏造要求，不改变 codefree 的能力、认证或环境状态。

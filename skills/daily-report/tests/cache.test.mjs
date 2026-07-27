@@ -12,6 +12,8 @@ import {
   writeProject,
   readCommit,
   writeCommit,
+  readReportedCommitIds,
+  writeReportedCommitIds,
   resolveScriptsDir,
 } from "../scripts/lib/cache.mjs";
 
@@ -127,6 +129,36 @@ test("readCommit / writeCommit - round-trips a full SHA", () => {
 test("readCommit - returns empty string for an unknown repo", () => {
   withTmpDir((dir) => {
     assert.equal(readCommit("/no/such/repo", { cacheDir: dir }), "");
+  });
+});
+
+// --- readReportedCommitIds / writeReportedCommitIds ---
+
+test("reported commit IDs - round-trip, deduplicate, and merge same-day writes", () => {
+  withTmpDir((dir) => {
+    writeReportedCommitIds("/repo/x", ["a".repeat(40), "b".repeat(40), "a".repeat(40)], { cacheDir: dir, date: "2026-07-27" });
+    writeReportedCommitIds("/repo/x", ["b".repeat(40), "c".repeat(40)], { cacheDir: dir, date: "2026-07-27" });
+    assert.deepEqual(readReportedCommitIds("/repo/x", { cacheDir: dir, date: "2026-07-27" }), ["a".repeat(40), "b".repeat(40), "c".repeat(40)]);
+  });
+});
+
+test("reported commit IDs - starts a new frontier on a new day", () => {
+  withTmpDir((dir) => {
+    writeReportedCommitIds("/repo/x", ["a".repeat(40)], { cacheDir: dir, date: "2026-07-27" });
+    assert.deepEqual(readReportedCommitIds("/repo/x", { cacheDir: dir, date: "2026-07-28" }), []);
+  });
+});
+
+test("reported commit IDs - rejects malformed values", () => {
+  withTmpDir((dir) => {
+    assert.throws(() => writeReportedCommitIds("/repo/x", ["valid", ""], { cacheDir: dir }), /non-empty strings/);
+  });
+});
+
+test("reported commit IDs - treats a legacy SHA cache as already reported", () => {
+  withTmpDir((dir) => {
+    writeCommit("/repo/x", "a".repeat(40), { cacheDir: dir });
+    assert.deepEqual(readReportedCommitIds("/repo/x", { cacheDir: dir, date: "2026-07-27" }), ["a".repeat(40)]);
   });
 });
 

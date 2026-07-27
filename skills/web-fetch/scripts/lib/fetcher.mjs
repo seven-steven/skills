@@ -1,5 +1,6 @@
 import http from "node:http";
 import https from "node:https";
+import dns from "node:dns";
 import net from "node:net";
 import tls from "node:tls";
 
@@ -21,7 +22,23 @@ export function buildEndpointUrl(template, targetUrl) {
   return template.replace("{url}", targetUrl);
 }
 
+export function validateTargetUrl(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`unsupported URL scheme: ${parsed.protocol.replace(":", "")}`);
+    }
+  } catch (error) {
+    throw new Error(`invalid URL: ${error.message}`);
+  }
+}
+
 export async function tryEndpoints(targetUrl, opts = {}) {
+  try {
+    validateTargetUrl(targetUrl);
+  } catch (error) {
+    return { ok: false, errors: [{ source: "input", message: describeError(error) }] };
+  }
   const {
     proxy = null,
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -62,8 +79,8 @@ export function describeError(e) {
   return e.message || String(e);
 }
 
-export function httpGet({ url, proxy, headers, timeoutMs }) {
-  if (proxy) return getViaProxy({ url, proxy, headers, timeoutMs });
+export function httpGet({ url, proxy, headers, timeoutMs, lookup = dns.lookup }) {
+  if (proxy) return getViaProxy({ url, proxy, headers, timeoutMs, lookup });
   return getDirect({ url, headers, timeoutMs });
 }
 
@@ -117,22 +134,22 @@ function getDirect({ url, headers, timeoutMs }) {
 // Proxy path — manual tunnel + manual HTTP/1.1 over socket
 // ---------------------------------------------------------------------------
 
-async function getViaProxy({ url, proxy, headers, timeoutMs }) {
+async function getViaProxy({ url, proxy, headers, timeoutMs, lookup }) {
   const target = new URL(url);
   const isTls = target.protocol === "https:";
   const targetPort = Number(target.port) || (isTls ? 443 : 80);
 
-  const socket = await openTunnel(proxy, target.hostname, targetPort, timeoutMs);
+  const socket = await openTunnel(proxy, target.hostname, targetPort, timeoutMs, lookup);
   return requestOverSocket({ socket, target, headers, isTls, timeoutMs });
 }
 
-function openTunnel(proxyUrl, targetHost, targetPort, timeoutMs) {
+function openTunnel(proxyUrl, targetHost, targetPort, timeoutMs, lookup) {
   const p = new URL(proxyUrl);
   if (p.protocol === "http:" || p.protocol === "https:") {
     return httpConnectTunnel(p, targetHost, targetPort, timeoutMs);
   }
   if (p.protocol === "socks5:" || p.protocol === "socks5h:") {
-    return socks5Tunnel(p, targetHost, targetPort, timeoutMs);
+    return socks5Tunnel(p, targetHost, targetPort, timeoutMs, lookup);
   }
   return Promise.reject(
     new Error(`unsupported proxy scheme: ${p.protocol.replace(":", "")}`)
@@ -182,15 +199,70 @@ function httpConnectTunnel(p, targetHost, targetPort, timeoutMs) {
   });
 }
 
-function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const hostBytes = Buffer.from(targetHost, "utf8");
+export async function resolveSocksAddress(protocol, targetHost, lookup) {
+  const host = targetHost.replace(/^\[|\]$/g, "");
+  if (protocol === "socks5h:") {
+    const hostBytes = Buffer.from(host, "utf8");
     if (hostBytes.length > 255) {
-      return reject(new Error(`SOCKS5 hostname too long: ${targetHost}`));
+      throw new Error(`SOCKS5 hostname too long: ${host}`);
     }
+    return Buffer.concat([Buffer.from([0x03, hostBytes.length]), hostBytes]);
+  }
 
-    const username = p.username || "";
-    const password = p.password || "";
+  const literalFamily = net.isIP(host);
+  const { address, family } = literalFamily
+    ? { address: host, family: literalFamily }
+    : await lookupAddress(host, lookup);
+
+  if (family === 4) {
+    return Buffer.from([0x01, ...address.split(".").map(Number)]);
+  }
+  if (family === 6) {
+    return Buffer.concat([Buffer.from([0x04]), ipv6ToBuffer(address)]);
+  }
+  throw new Error(`SOCKS5 DNS lookup returned unsupported address family: ${family}`);
+}
+
+function lookupAddress(host, lookup) {
+  return new Promise((resolve, reject) => {
+    lookup(host, { all: true, verbatim: true }, (error, addresses) => {
+      if (error) return reject(error);
+      const first = Array.isArray(addresses) ? addresses[0] : addresses;
+      if (!first || !first.address || !first.family) {
+        return reject(new Error(`SOCKS5 DNS lookup returned no addresses for ${host}`));
+      }
+      resolve(first);
+    });
+  });
+}
+
+function ipv6ToBuffer(address) {
+  const [left, right = ""] = address.split("::");
+  const leftParts = left ? left.split(":") : [];
+  const rightParts = right ? right.split(":") : [];
+  const expandIpv4 = (parts) => {
+    const last = parts.at(-1);
+    if (!last || !last.includes(".")) return parts;
+    return [...parts.slice(0, -1), ...last.split(".").map((part) => Number(part).toString(16))];
+  };
+  const parts = [...expandIpv4(leftParts), ...expandIpv4(rightParts)];
+  const zeroes = 8 - parts.length;
+  const groups = address.includes("::")
+    ? [...expandIpv4(leftParts), ...Array(zeroes).fill("0"), ...expandIpv4(rightParts)]
+    : parts;
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group))) {
+    throw new Error(`invalid IPv6 address: ${address}`);
+  }
+  const result = Buffer.alloc(16);
+  groups.forEach((group, index) => result.writeUInt16BE(parseInt(group, 16), index * 2));
+  return result;
+}
+
+async function socks5Tunnel(p, targetHost, targetPort, timeoutMs, lookup) {
+  const address = await resolveSocksAddress(p.protocol, targetHost, lookup);
+  return new Promise((resolve, reject) => {
+    const username = decodeURIComponent(p.username || "");
+    const password = decodeURIComponent(p.password || "");
     const hasAuth = username.length > 0;
 
     const socket = net.connect({
@@ -205,13 +277,7 @@ function socks5Tunnel(p, targetHost, targetPort, timeoutMs) {
     function sendConnect() {
       const portBuf = Buffer.alloc(2);
       portBuf.writeUInt16BE(targetPort);
-      socket.write(
-        Buffer.concat([
-          Buffer.from([0x05, 0x01, 0x00, 0x03, hostBytes.length]),
-          hostBytes,
-          portBuf,
-        ])
-      );
+      socket.write(Buffer.concat([Buffer.from([0x05, 0x01, 0x00]), address, portBuf]));
     }
 
     const fail = (e) => {

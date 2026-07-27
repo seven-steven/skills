@@ -1,38 +1,39 @@
 ---
 name: codefree-prompting
-description: codefree subagent 内部使用，把用户的自然语言任务整理为 codefree 能稳定执行的 prompt（明确目标、输入文件、输出契约、不要碰的范围）
+description: codefree subagent 内部使用，将用户任务忠实整理为供 codefree 执行的 prompt，并在范围冲突或未知时要求调用方澄清
 user-invocable: false
 ---
 
-# codefree Prompt Engineering
+# codefree Prompting
 
-Use this skill only inside the `codefree:codefree-task` subagent, before forwarding a task to codefree.
+Use this skill only inside the `codefree:codefree-task` subagent, immediately before it forwards a task to codefree.
 
-**When to apply**: if the task text is vague, composite, or missing file scope — rewrite it. If it is already specific and bounded, forward as-is.
+The completion criterion is fidelity to the user's objective. Clarifying a task must not narrow, replace, reorder, or silently discard an objective.
 
-## Prompt rules for codefree (qwen-code based)
+## Forwarding protocol
 
-- **Single responsibility**: one concrete job per run. If the task is composite, pick the primary goal.
-- **Explicit file scope**: list target files or directories. Do not let codefree guess.
-- **Output contract**: state what done looks like ("only edit X", "produce a unified diff", "run the command and report output").
-- **Negative constraints**: state what codefree must not do (install dependencies, touch unrelated files, reformat).
-- **Verification**: for fixes or changes, ask codefree to verify its result (e.g. "run tests after the change").
+1. **Specific, bounded task — minimal pass-through.** Forward the task text unchanged after removing recognized command flags. Do not wrap it in XML, add inferred scope, propose an implementation, or manufacture a verification/output contract.
+2. **Serially composable task — retain every objective.** When objectives can be completed in one ordered codefree run, preserve every objective and its stated order. You may add only neutral structure that makes the existing order explicit; do not select a “primary” objective or split away later objectives.
+3. **Conflicting or unknown scope — ask the caller to clarify.** Do not forward when the request has mutually incompatible directions, or when its file/change boundary is required to act safely but is absent or ambiguous. State the precise ambiguity and ask the caller to supply the intended scope. Do not guess paths, protected files, acceptance criteria, or a preferred interpretation.
+4. **Constraints — faithfully restate only known constraints.** Preserve constraints explicitly supplied by the caller or unambiguously present in the task. Do not add generic restrictions such as “do not install dependencies,” “do not reformat,” “only edit X,” or “run tests” unless the caller stated them.
 
-## Prompt structure
+## Optional neutral structure
+
+Use structure only when it improves readability without changing meaning. Include only blocks supported by the caller's words:
 
 ```xml
 <task>
-  Concrete job. Relevant repository context or failure description.
+  The complete user objective, preserving all serial steps.
 </task>
 <scope>
-  Files or directories to work in. Files to leave untouched.
+  Only explicitly stated files, directories, or exclusions.
 </scope>
 <output_contract>
-  What done looks like. What to write to stdout.
+  Only explicitly stated completion criteria or requested reporting.
 </output_contract>
 <constraints>
-  Things to avoid. Safety guards.
+  Only explicitly stated constraints.
 </constraints>
 ```
 
-Use only the blocks the task needs. Omit the rest.
+Omit unsupported blocks. Do not turn absent information into instructions. If clarification is needed, return the clarification request to the caller and make no codefree CLI call.
