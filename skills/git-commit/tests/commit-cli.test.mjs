@@ -146,6 +146,44 @@ test("commit-cli - --cwd without path → exit 2, usage on stderr", () => {
   assert.ok(r.stderr.includes("--cwd"), `stderr: ${r.stderr}`);
 });
 
+test("commit-cli - --task-id supports either option order and persists a canonical footer", () => {
+  const dir = mkdtempSync(join(tmpdir(), "commit-test-"));
+  try {
+    initGitRepo(dir);
+    const first = spawnSync(process.execPath, [
+      COMMIT_MJS, "--cwd", dir, "--task-id", "project-101", "feat: add task support",
+    ], { encoding: "utf8", cwd: tmpdir() });
+    assert.equal(first.status, 0, first.stderr);
+
+    stageChange(dir, "file.txt", "second task");
+    const second = spawnSync(process.execPath, [
+      COMMIT_MJS, "--task-id", "%project-102", "--cwd", dir,
+    ], { input: "fix: update task support", encoding: "utf8", cwd: tmpdir() });
+    assert.equal(second.status, 0, second.stderr);
+
+    const log = spawnSync("git", ["-C", dir, "log", "-2", "--format=%B%x00"], { encoding: "utf8" });
+    const messages = log.stdout.split("\0").filter(Boolean);
+    assert.ok(messages[0].endsWith("- srdcloud task id: %project-102\n"), log.stdout);
+    assert.ok(messages[1].endsWith("- srdcloud task id: %project-101\n"), log.stdout);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("commit-cli - malformed --task-id exits 2 without committing", () => {
+  const result = spawnSync(process.execPath, [COMMIT_MJS, "--task-id", "not-valid", "feat: add task"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.ok(result.stderr.includes("invalid task ID"));
+});
+
+test("commit-cli - option values cannot be another option", () => {
+  for (const args of [["--cwd", "--task-id", "project-101"], ["--task-id", "--cwd", tmpdir()]]) {
+    const result = spawnSync(process.execPath, [COMMIT_MJS, ...args], { encoding: "utf8" });
+    assert.equal(result.status, 2, args.join(" "));
+    assert.ok(result.stderr.includes("usage:"));
+  }
+});
+
 // ── temp file cleanup ─────────────────────────────────────────────────────────
 
 test("commit-cli - temp file is removed after successful commit", () => {

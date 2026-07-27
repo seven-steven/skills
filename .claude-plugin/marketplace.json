@@ -11,7 +11,7 @@
       "name": "git-commit",
       "source": "./skills",
       "strict": false,
-      "description": "根据当前相关变更生成并提交 Angular/Conventional Commit，支持 submodule 提交流程",
+      "description": "根据当前相关变更生成并提交 Angular/Conventional Commit；支持可选任务 ID footer 与 submodule 提交流程",
       "skills": [
         "./git-commit"
       ]

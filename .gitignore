@@ -31,3 +31,4 @@ coverage/
 
 # codefree CLI runtime artifacts
 .codefree/
+.claude/worktrees/

@@ -4,46 +4,66 @@ import { writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { validateMessage, formatErrorReport } from "./lib/commit-message.mjs";
+import { validateMessage, formatErrorReport, addTaskIdFooter } from "./lib/commit-message.mjs";
 import { readMessageInput } from "./lib/input.mjs";
+import { normalizeTaskId } from "./lib/task-id.mjs";
 
 function printUsage() {
-  process.stderr.write("usage: commit.mjs [--cwd <repo-path>] <message>  # or pipe via stdin\n");
+  process.stderr.write(
+    "usage: commit.mjs [--cwd <repo-path>] [--task-id <task-id>] <message>  # or pipe via stdin\n"
+  );
 }
 
 function parseArgs(argv) {
-  const args = argv.slice(2);
-
-  if (args[0] !== "--cwd") {
-    return { cwd: undefined, messageArg: args[0] };
+  let cwd;
+  let taskId;
+  let messageArg;
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--cwd" || arg === "--task-id") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) return { error: true };
+      if (arg === "--cwd") {
+        if (cwd !== undefined) return { error: true };
+        cwd = value;
+      } else {
+        if (taskId !== undefined) return { error: true };
+        taskId = value;
+      }
+      index += 1;
+    } else if (arg.startsWith("--") || messageArg !== undefined) {
+      return { error: true };
+    } else {
+      messageArg = arg;
+    }
   }
-
-  const cwd = args[1];
-  if (!cwd) {
-    return { error: true };
-  }
-
-  return { cwd, messageArg: args[2] };
+  return { cwd, taskId, messageArg };
 }
 
 async function main() {
-  const { cwd, messageArg, error } = parseArgs(process.argv);
-  if (error) {
+  const parsed = parseArgs(process.argv);
+  if (parsed.error) {
     printUsage();
     process.exit(2);
   }
 
+  const taskId = parsed.taskId === undefined ? undefined : normalizeTaskId(parsed.taskId);
+  if (parsed.taskId !== undefined && taskId === undefined) {
+    process.stderr.write("invalid task ID\n");
+    process.exit(2);
+  }
+
   const message = await readMessageInput({
-    argv: [process.argv[0], process.argv[1], messageArg].filter(Boolean),
+    argv: [process.argv[0], process.argv[1], parsed.messageArg].filter(Boolean),
     stdin: process.stdin,
   });
-
   if (message === undefined || !message.trim()) {
     printUsage();
     process.exit(2);
   }
 
-  const result = validateMessage(message);
+  const finalMessage = taskId ? addTaskIdFooter(message, taskId) : message;
+  const result = validateMessage(finalMessage);
   if (!result.ok) {
     process.stderr.write(formatErrorReport(result.errors));
     process.exit(1);
@@ -52,10 +72,12 @@ async function main() {
   const tmpFile = join(tmpdir(), `claude-commit-${randomBytes(6).toString("hex")}.txt`);
   let exitCode = 1;
   try {
-    writeFileSync(tmpFile, message, "utf8");
-    const gitArgs = cwd ? ["-C", cwd, "commit", "-F", tmpFile] : ["commit", "-F", tmpFile];
-    const r = spawnSync("git", gitArgs, { stdio: "inherit" });
-    exitCode = r.status ?? 1;
+    writeFileSync(tmpFile, finalMessage, "utf8");
+    const gitArgs = parsed.cwd
+      ? ["-C", parsed.cwd, "commit", "-F", tmpFile]
+      : ["commit", "-F", tmpFile];
+    const commit = spawnSync("git", gitArgs, { stdio: "inherit" });
+    exitCode = commit.status ?? 1;
   } finally {
     try { unlinkSync(tmpFile); } catch { /* already gone */ }
   }

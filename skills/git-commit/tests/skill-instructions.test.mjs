@@ -16,7 +16,7 @@ test("SKILL.md preserves the required metadata and explicit slash-command trigge
 test("SKILL.md resolves both scripts from the loaded skill directory", () => {
   assert.match(SKILL, /Base directory for this skill/);
   assert.match(SKILL, /<skill-dir>\/scripts/);
-  assert.match(SKILL, /<scripts-dir>\/validate\.mjs[\s\S]*<scripts-dir>\/commit\.mjs/);
+  assert.match(SKILL, /<scripts-dir>\/task-id\.mjs[\s\S]*<scripts-dir>\/validate\.mjs[\s\S]*<scripts-dir>\/commit\.mjs/);
   assert.doesNotMatch(SKILL, /~\/\.claude\/plugins\/cache[\s\S]*git-commit\/scripts\/validate\.mjs/);
 });
 
@@ -37,10 +37,25 @@ test("SKILL.md reads diff, log, and submodule details on demand", () => {
   assert.match(SKILL, /git submodule foreach --recursive git status --short/);
 });
 
-test("SKILL.md uses direct node calls without shell-pipeline setup", () => {
+test("SKILL.md passes the resolved task ID to both helpers", () => {
   assert.doesNotMatch(SKILL, /SKILL_SCRIPTS_DIR|printf '%s'[\s\S]*\| node/);
-  assert.match(SKILL, /node\s+["']<scripts-dir>\/validate\.mjs["']\s+["']<message>["']/);
-  assert.match(SKILL, /node\s+["']<scripts-dir>\/commit\.mjs["']\s+["']<message>["']/);
+  assert.match(SKILL, /node\s+["']<scripts-dir>\/validate\.mjs["']\s+--task-id\s+["']<resolved-task-id>["']\s+["']<message>["']/);
+  assert.match(SKILL, /node\s+["']<scripts-dir>\/commit\.mjs["']\s+--task-id\s+["']<resolved-task-id>["']\s+["']<message>["']/);
+  assert.match(SKILL, /Omit `--task-id` when resolution returned no value\./);
+});
+
+test("SKILL.md resolves and reuses task IDs without changing message content", () => {
+  assert.match(SKILL, /argument-hint: <task ID> \(optional; replaces the generated task-ID footer\)/);
+  assert.match(SKILL, /Resolve the task ID once[\s\S]*Reuse this one resolved value for every affected submodule and the parent repository/);
+  assert.match(SKILL, /optional slash-command argument as an explicit task ID, not text to append to the subject/i);
+  assert.match(SKILL, /invalid explicit ID[\s\S]*stop[\s\S]*do not fall back to automatic discovery/i);
+  assert.match(SKILL, /user\.email[\s\S]*up to ten commits reachable from `HEAD` by that author/i);
+  assert.match(SKILL, /automatic resolution produces no usable value or fails, continue without a task-ID footer/i);
+  assert.match(SKILL, /normalized to exactly one leading `%`/i);
+  assert.match(SKILL, /independent canonical `<footer>`, `- srdcloud task id: %<task-id>`/);
+  assert.match(SKILL, /after any Git trailers/i);
+  assert.match(SKILL, /not part of the subject or body/i);
+  assert.match(SKILL, /does not alter the message subject or body/i);
 });
 
 test("SKILL.md infers user language preference from context before composing the message", () => {
@@ -65,7 +80,7 @@ test("SKILL.md stages only relevant files and limits validation retries", () => 
 
 test("SKILL.md requires deepest-first submodule commits before parent commits", () => {
   assert.match(SKILL, /commit each affected submodule before its parent repository/i);
-  assert.match(SKILL, /node\s+["']<scripts-dir>\/commit\.mjs["']\s+--cwd\s+["']<submodule-path>["']\s+["']<submodule-message>["']/);
+  assert.match(SKILL, /node\s+["']<scripts-dir>\/commit\.mjs["']\s+--cwd\s+["']<submodule-path>["']\s+--task-id\s+["']<resolved-task-id>["']\s+["']<submodule-message>["']/);
   assert.match(SKILL, /git add <submodule-path>/);
   assert.match(SKILL, /nested submodules deepest-first/i);
 });

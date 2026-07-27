@@ -1,3 +1,8 @@
+import {
+  extractTaskIdFromFooter,
+  formatTaskIdFooter,
+} from "./task-id.mjs";
+
 export const ANGULAR_TYPES = [
   "feat", "fix", "docs", "style", "refactor",
   "test", "chore", "perf", "build", "ci", "revert",
@@ -18,15 +23,21 @@ function normalize(text) {
 
 export function parseMessage(text) {
   const normalized = normalize(text);
-  const parts = normalized.split(/\n\n+/);
+  const lines = normalized.split("\n");
+  const lastLine = lines.at(-1) ?? "";
+  const footer = extractTaskIdFromFooter(lastLine) ? [lastLine] : [];
+  const content = footer.length > 0 ? lines.slice(0, -1).join("\n").replace(/\n+$/, "") : normalized;
+  const parts = content.split(/\n\n+/);
   const subject = parts[0]?.trim() ?? "";
   const rest = parts.slice(1);
   const last = rest[rest.length - 1] ?? "";
-  const trailers = last
-    ? last.split("\n").filter((l) => /^\w[\w-]*: /.test(l))
+  const lastLines = last ? last.split("\n") : [];
+  const trailers = lastLines.length > 0 && lastLines.every((line) => /^\w[\w-]*: /.test(line))
+    ? lastLines
     : [];
-  const body = rest.length > 0 ? rest.join("\n\n") : "";
-  return { subject, body, trailers };
+  const bodyParts = trailers.length > 0 ? rest.slice(0, -1) : rest;
+  const body = bodyParts.join("\n\n");
+  return { subject, body, trailers, footer };
 }
 
 export function validateMessage(text) {
@@ -101,4 +112,13 @@ export function validateMessage(text) {
 
 export function formatErrorReport(errors) {
   return errors.map((e) => `  - ${e}`).join("\n") + "\n";
+}
+
+export function addTaskIdFooter(message, taskId) {
+  const normalized = normalize(message);
+  const lines = normalized.split("\n");
+  if (extractTaskIdFromFooter(lines.at(-1) ?? "")) lines.pop();
+  while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+  const footer = formatTaskIdFooter(taskId);
+  return footer ? [...lines, "", footer].join("\n") : normalized;
 }

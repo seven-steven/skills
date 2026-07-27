@@ -7,7 +7,9 @@ import {
   parseMessage,
   validateMessage,
   formatErrorReport,
+  addTaskIdFooter,
 } from "../scripts/lib/commit-message.mjs";
+import { TASK_ID_FOOTER_PREFIX } from "../scripts/lib/task-id.mjs";
 
 // ---------------------------------------------------------------------------
 // parseMessage
@@ -18,6 +20,7 @@ test("parseMessage - single-line message", () => {
   assert.equal(r.subject, "feat: add login");
   assert.equal(r.body, "");
   assert.deepEqual(r.trailers, []);
+  assert.deepEqual(r.footer, []);
 });
 
 test("parseMessage - subject + body separated by blank line", () => {
@@ -47,6 +50,37 @@ test("parseMessage - ignores trailing blank lines", () => {
   const r = parseMessage("feat: add x\n\nbody\n\n\n");
   assert.equal(r.subject, "feat: add x");
   assert.equal(r.body, "body");
+});
+
+test("parseMessage - separates body, trailers, and task ID footer", () => {
+  const r = parseMessage([
+    "fix: broken",
+    "",
+    "Body text.",
+    "",
+    "Refs: #42",
+    "Fixes: #99",
+    "",
+    "- srdcloud task id: %project-101",
+  ].join("\n"));
+  assert.equal(r.subject, "fix: broken");
+  assert.equal(r.body, "Body text.");
+  assert.deepEqual(r.trailers, ["Refs: #42", "Fixes: #99"]);
+  assert.deepEqual(r.footer, ["- srdcloud task id: %project-101"]);
+});
+
+test("parseMessage - preserves mixed trailer-like paragraphs in body", () => {
+  const r = parseMessage("feat: add x\n\nBody\n\nRefs: #1\ncontinuation\n\n- srdcloud task id: %101");
+  assert.equal(r.body, "Body\n\nRefs: #1\ncontinuation");
+  assert.deepEqual(r.trailers, []);
+  assert.deepEqual(r.footer, ["- srdcloud task id: %101"]);
+});
+
+test("parseMessage - recognizes footer after BOM, CRLF, and trailing blank lines", () => {
+  const r = parseMessage("﻿feat: add x\r\n\r\nBody\r\n\r\n- srdcloud task id: %101\r\n\r\n");
+  assert.equal(r.subject, "feat: add x");
+  assert.equal(r.body, "Body");
+  assert.deepEqual(r.footer, ["- srdcloud task id: %101"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -186,6 +220,53 @@ test("validateMessage - empty subject after colon", () => {
   const r = validateMessage("feat: ");
   assert.equal(r.ok, false);
   assert.ok(r.errors.some((e) => e.includes("subject must not be empty after the colon")));
+});
+
+// ---------------------------------------------------------------------------
+// task ID footer
+// ---------------------------------------------------------------------------
+
+test("addTaskIdFooter - appends the canonical footer as an independent final section", () => {
+  const result = addTaskIdFooter("feat: add task support\n\nBody text.", "%project-101");
+  assert.equal(result, "feat: add task support\n\nBody text.\n\n- srdcloud task id: %project-101");
+  assert.equal(result.split("\n").at(-1), `${TASK_ID_FOOTER_PREFIX} %project-101`);
+});
+
+test("addTaskIdFooter - replaces the trailing footer, normalizes line endings, and is idempotent", () => {
+  const source = [
+    "feat: add task support\r\n",
+    "\r\n",
+    "Body text.\r\n",
+    "\r\n",
+    "- srdcloud task id: 42\r\n",
+    "\r\n",
+  ].join("");
+  const once = addTaskIdFooter(source, "%project-101");
+  const twice = addTaskIdFooter(once, "%project-101");
+  assert.equal(twice, once);
+  assert.equal(once, "feat: add task support\n\nBody text.\n\n- srdcloud task id: %project-101");
+});
+
+test("addTaskIdFooter - preserves task-like lines that are not the trailing footer", () => {
+  const source = "feat: add task support\n\n- srdcloud task id: %old-1\nExplanation";
+  const result = addTaskIdFooter(source, "%project-102");
+  assert.ok(result.includes("- srdcloud task id: %old-1\nExplanation"));
+  assert.ok(result.endsWith("- srdcloud task id: %project-102"));
+});
+
+test("addTaskIdFooter - preserves similar body lines that are not valid task footers", () => {
+  const source = [
+    "feat: add task support",
+    "",
+    "- srdcloud task id: explanation",
+    "- srdcloud task id: %bad trailing text",
+    "- srdcloud task id:  %project-101",
+  ].join("\n");
+  const result = addTaskIdFooter(source, "%project-102");
+  assert.ok(result.includes("- srdcloud task id: explanation"));
+  assert.ok(result.includes("- srdcloud task id: %bad trailing text"));
+  assert.ok(result.includes("- srdcloud task id:  %project-101"));
+  assert.ok(result.endsWith("- srdcloud task id: %project-102"));
 });
 
 // ---------------------------------------------------------------------------
