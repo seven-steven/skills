@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 
-const TASK_ID_RE = /^%?[A-Za-z]*-*\d+$/;
+const TASK_ID_RE = /^%?[A-Za-z\-_]*-*\d+$/;
 export const TASK_ID_FOOTER_PREFIX = "- srdcloud task id:";
-const TASK_ID_FOOTER_RE = /^- srdcloud task id: (%?[A-Za-z]*-*\d+)$/;
+const TASK_ID_FOOTER_RE = /^- srdcloud task id: (%?[A-Za-z\-_]*-*\d+)$/;
 
 export function normalizeTaskId(value) {
   if (typeof value !== "string") return undefined;

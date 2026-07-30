@@ -41,10 +41,12 @@ test("task-id - normalizes valid values to exactly one percent", () => {
   assert.equal(normalizeTaskId("project-101"), "%project-101");
   assert.equal(normalizeTaskId(" %101 "), "%101");
   assert.equal(normalizeTaskId("ABC12"), "%ABC12");
+  assert.equal(normalizeTaskId("project_code-101"), "%project_code-101");
+  assert.equal(normalizeTaskId("%project_code-101"), "%project_code-101");
 });
 
 test("task-id - rejects malformed values", () => {
-  for (const value of ["", "%", "project-", "1-2", "task_1", "%project-101%"])
+  for (const value of ["", "%", "project-", "1-2", "task#1", "%project-101%"])
     assert.equal(normalizeTaskId(value), undefined, value);
 });
 

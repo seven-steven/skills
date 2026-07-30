@@ -27,7 +27,7 @@ Skill 只会暂存与当前任务相关的文件；范围无法判断时会先�
 /git-commit project-101
 ```
 
-`project-101`、`%project-101` 和 `101` 分别会规范化为 `%project-101`、`%project-101` 和 `%101`。显式 ID 无效时流程会停止并要求更正，不会回退到自动发现。
+`project-101`、`%project-101`、`project_code-101` 和 `101` 分别会规范化为 `%project-101`、`%project-101`、`%project_code-101` 和 `%101`。显式 ID 无效时流程会停止并要求更正，不会回退到自动发现。
 
 也可独立调用 helper：
 
