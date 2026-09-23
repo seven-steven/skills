@@ -31,7 +31,20 @@ export function runFakeBin() {
   if (recordPath) {
     fs.writeFileSync(
       recordPath,
-      JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }, null, 2),
+      JSON.stringify(
+        {
+          argv: process.argv.slice(2),
+          cwd: process.cwd(),
+          proxy: {
+            HTTP_PROXY: process.env.HTTP_PROXY ?? null,
+            HTTPS_PROXY: process.env.HTTPS_PROXY ?? null,
+            ALL_PROXY: process.env.ALL_PROXY ?? null,
+            NO_PROXY: process.env.NO_PROXY ?? null
+          }
+        },
+        null,
+        2
+      ),
       "utf8"
     );
   }

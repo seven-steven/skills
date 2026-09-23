@@ -403,6 +403,43 @@ function killTreeHard(pid) {
   }
 }
 
+const PROXY_URL_PATTERN = /^https?:\/\/\S+$/;
+const LOCAL_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1"];
+
+/**
+ * Build the environment for the codefree-o child process.
+ *
+ * `CODEFREE_PROXY` routes ONLY codefree-o traffic through a proxy without
+ * touching the rest of the session: when set, it overrides HTTP_PROXY,
+ * HTTPS_PROXY and ALL_PROXY for the child. NO_PROXY is preserved and always
+ * gains localhost/127.0.0.1 (required by upstream docs — the TUI talks to a
+ * local HTTP server and must not loop through the proxy). An invalid value
+ * fails fast instead of silently producing a broken proxy config.
+ */
+export function buildChildEnv(sourceEnv = process.env) {
+  const childEnv = { ...sourceEnv, LANG: sourceEnv.LANG ?? "C.UTF-8" };
+  const proxyUrl = sourceEnv.CODEFREE_PROXY;
+  if (proxyUrl === undefined || proxyUrl === "") {
+    return childEnv;
+  }
+  if (typeof proxyUrl !== "string" || !PROXY_URL_PATTERN.test(proxyUrl)) {
+    throw new UsageError(
+      `CODEFREE_PROXY must be an http(s) proxy URL (got: ${String(proxyUrl).slice(0, 60)})`
+    );
+  }
+  childEnv.HTTP_PROXY = proxyUrl;
+  childEnv.HTTPS_PROXY = proxyUrl;
+  childEnv.ALL_PROXY = proxyUrl;
+  const noProxy = (childEnv.NO_PROXY ?? "").split(",").map((entry) => entry.trim());
+  for (const entry of LOCAL_NO_PROXY_ENTRIES) {
+    if (!noProxy.includes(entry)) {
+      noProxy.unshift(entry);
+    }
+  }
+  childEnv.NO_PROXY = noProxy.join(",");
+  return childEnv;
+}
+
 function runCodefree({ argv, cwd, timeoutMs }) {
   return new Promise((resolve) => {
     const resolved = resolveBinaryPath(CODEFREE_BIN);
@@ -489,7 +526,7 @@ function runCodefree({ argv, cwd, timeoutMs }) {
     // tree. On win32, taskkill /T in terminateProcessTree walks the tree.
     const child = spawn(resolved, argv, {
       cwd,
-      env: { ...process.env, LANG: process.env.LANG ?? "C.UTF-8" },
+      env: buildChildEnv(),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       detached: process.platform !== "win32",

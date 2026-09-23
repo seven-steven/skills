@@ -128,6 +128,74 @@ test("task - request file promptFile outside the agent convention is rejected", 
   }
 });
 
+test("task - CODEFREE_PROXY overrides the child proxy env and forces local NO_PROXY", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_FAKE_SCENARIO = scenarioFile(sandbox, { events: [textEvent("ok")] });
+    sandbox.env.CODEFREE_PROXY = "http://user:pass@proxy.example.com:1080";
+    // Pre-existing session-wide proxy settings must be overridden for the child.
+    sandbox.env.HTTP_PROXY = "http://old-proxy.example.com:2080";
+    sandbox.env.HTTPS_PROXY = "http://old-proxy.example.com:2080";
+    sandbox.env.ALL_PROXY = "http://old-proxy.example.com:2080";
+    sandbox.env.NO_PROXY = "10.0.0.0/8";
+
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
+      input: "go"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const record = readJsonFile(sandbox.recordFile);
+    assert.equal(record.proxy.HTTP_PROXY, "http://user:pass@proxy.example.com:1080");
+    assert.equal(record.proxy.HTTPS_PROXY, "http://user:pass@proxy.example.com:1080");
+    assert.equal(record.proxy.ALL_PROXY, "http://user:pass@proxy.example.com:1080");
+    const noProxy = record.proxy.NO_PROXY.split(",");
+    assert.ok(noProxy.includes("localhost"), "NO_PROXY must include localhost");
+    assert.ok(noProxy.includes("127.0.0.1"), "NO_PROXY must include 127.0.0.1");
+    assert.ok(noProxy.includes("10.0.0.0/8"), "existing NO_PROXY entries are preserved");
+  } finally {
+    cleanupSandbox(sandbox);
+  }
+});
+
+test("task - without CODEFREE_PROXY the inherited proxy env passes through unchanged", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_FAKE_SCENARIO = scenarioFile(sandbox, { events: [textEvent("ok")] });
+    sandbox.env.HTTP_PROXY = "http://session-proxy.example.com:2080";
+    delete sandbox.env.CODEFREE_PROXY;
+
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
+      input: "go"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const record = readJsonFile(sandbox.recordFile);
+    assert.equal(record.proxy.HTTP_PROXY, "http://session-proxy.example.com:2080");
+  } finally {
+    cleanupSandbox(sandbox);
+  }
+});
+
+test("task - invalid CODEFREE_PROXY fails fast with a usage error", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_PROXY = "not a url";
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
+      input: "go"
+    });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /CODEFREE_PROXY/);
+  } finally {
+    cleanupSandbox(sandbox);
+  }
+});
+
 test("task - only allowlisted flags are forwarded; --auto is always present", () => {
   const sandbox = makeSandbox();
   try {
