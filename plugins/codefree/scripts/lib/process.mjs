@@ -94,7 +94,13 @@ export function getBinaryCandidates(name, { platform = process.platform, env = p
     return pathDirs.flatMap((dir) => exts.map((ext) => ({ dir, filename: name + ext })));
   }
 
-  // POSIX: bare name in each PATH dir, no extension guessing
+  // POSIX: bare name in each PATH dir, no extension guessing. An explicit
+  // path (absolute or relative, e.g. CODEFREE_BIN=/opt/codefree-o) must be
+  // probed as-is — splitting it into PATH dirs + filename would never find
+  // the binary.
+  if (hasPathSep) {
+    return [{ dir: path.dirname(name), filename: path.basename(name) }];
+  }
   const pathDirs = (env.PATH || "").split(":").filter(Boolean);
   return pathDirs.map((dir) => ({ dir, filename: name }));
 }
@@ -118,12 +124,7 @@ export function resolveBinaryPath(name, { platform = process.platform, env = pro
   return null;
 }
 
-/**
- * Returns true when the resolved binary must be invoked through a shell.
- *
- * Node ≥ 20.12.2 (post-CVE-2024-27980) requires `shell: true` to spawn
- * .cmd/.bat files on Windows; spawning them directly throws EINVAL.
- */
+/** Return whether Windows needs a shell to run the resolved binary. */
 export function needsShellForBinary(resolvedPath, platform = process.platform) {
   if (platform !== "win32") return false;
   const ext = path.extname(resolvedPath).toUpperCase();

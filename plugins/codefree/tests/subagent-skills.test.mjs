@@ -72,7 +72,25 @@ test("subagent contract - wires both skills and applies their forwarding and ter
   assert.match(agent, /Preserve every objective in an ordered composite task/);
   assert.match(agent, /ask the caller to clarify instead of invoking codefree/);
   assert.match(agent, /Never infer paths, verification steps, or constraints/);
-  assert.match(agent, /exactly one `Bash` call/);
+  assert.match(agent, /exactly one Bash call/);
   assert.match(agent, /raw output is authoritative/);
   assert.match(agent, /Do not retry, fall back to implementing work, or make repository changes after codefree returns/);
+});
+
+test("subagent contract - passes the prompt via private temp files, never inline shell text", () => {
+  assert.match(agent, /tools: Bash, Write/);
+  assert.match(agent, /nothing user-supplied ever appears on a shell command line/);
+  assert.match(agent, /--request-file/);
+  assert.match(agent, /mkdtempSync/);
+  assert.match(agent, /mode 0700/);
+  assert.match(agent, /verbatim, unmodified/);
+  assert.match(agent, /no JSON escaping/);
+  assert.match(agent, /promptFile/);
+  assert.match(agent, /Never write the task text itself into the JSON/);
+  assert.match(agent, /Never write either file inside any repository/);
+  assert.match(agent, /deletes both files — and the emptied private directory — afterwards/);
+  assert.match(agent, /Never forward `--attach`, `--share`, `--command`, `--file`, `--title`, `--port`/);
+  assert.match(agent, /--auto/);
+  assert.match(agent, /`timeout` parameter to `600000`/);
+  assert.match(agent, /defaults to 120 000 ms/);
 });

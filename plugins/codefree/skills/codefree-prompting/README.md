@@ -47,7 +47,7 @@ subagent 可将这三项分别放入 `<scope>`、`<constraints>` 和 `<output_co
 
 ## 实现架构
 
-本 skill 是纯 prompt skill，不含 Node.js 脚本。`codefree:codefree-task` 在执行其唯一一次 companion-script 调用前加载本 skill。它仅进行任务保真检查、必要时请求调用方澄清，或用中性的 XML 结构重述已有信息；不会读取仓库或制定解决方案。
+本 skill 是纯 prompt skill，不含 Node.js 脚本。`codefree:codefree-task` 在向 codefree-o 转发任务前加载本 skill。它仅进行任务保真检查、必要时请求调用方澄清，或用中性的 XML 结构重述已有信息；不会读取仓库或制定解决方案。
 
 对应的 instruction/contract tests 位于 `plugins/codefree/tests/subagent-skills.test.mjs`，验证元数据、最小透传、复合目标、澄清边界和约束保真要求。
 

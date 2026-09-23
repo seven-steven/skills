@@ -149,3 +149,4 @@ test("terminateProcessTree - win32 'not found' message means process is gone", (
   assert.equal(result.method, "taskkill");
   assert.equal(result.delivered, false);
 });
+

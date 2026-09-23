@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseArgs, splitRawArgumentString } from "../scripts/lib/args.mjs";
+import { parseArgs } from "../scripts/lib/args.mjs";
 
 test("parseArgs - bare positionals", () => {
   const { options, positionals } = parseArgs(["foo", "bar baz"]);
@@ -76,26 +76,3 @@ test("parseArgs - lone dash is positional", () => {
   assert.deepEqual(positionals, ["-"]);
 });
 
-test("splitRawArgumentString - basic whitespace split", () => {
-  assert.deepEqual(splitRawArgumentString("a b c"), ["a", "b", "c"]);
-});
-
-test("splitRawArgumentString - single quotes preserve spaces", () => {
-  assert.deepEqual(splitRawArgumentString("a 'b c' d"), ["a", "b c", "d"]);
-});
-
-test("splitRawArgumentString - double quotes preserve spaces", () => {
-  assert.deepEqual(splitRawArgumentString('a "b c" d'), ["a", "b c", "d"]);
-});
-
-test("splitRawArgumentString - escape character keeps next char literal", () => {
-  assert.deepEqual(splitRawArgumentString("a\\ b c"), ["a b", "c"]);
-});
-
-test("splitRawArgumentString - trailing escape is preserved", () => {
-  assert.deepEqual(splitRawArgumentString("foo\\"), ["foo\\"]);
-});
-
-test("splitRawArgumentString - empty input yields empty array", () => {
-  assert.deepEqual(splitRawArgumentString(""), []);
-});

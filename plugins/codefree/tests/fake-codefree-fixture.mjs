@@ -1,121 +1,110 @@
+/**
+ * fake-codefree-fixture.mjs
+ *
+ * Scenario-driven fake `codefree-o` binary for zero-network contract tests.
+ *
+ * The generated bin script (see tests/helpers.mjs `writeFakeBin`) imports
+ * `runFakeBin` from this module. Behaviour is controlled entirely through
+ * env vars so the same fixture covers happy paths, failures, hangs, and
+ * byte-level chunk splitting:
+ *
+ *   CODEFREE_FAKE_RECORD    path to write { argv, cwd } as JSON (spy output)
+ *   CODEFREE_FAKE_SCENARIO  path to a scenario JSON file:
+ *     {
+ *       events:     [ ...NDJSON event objects, emitted one per line... ],
+ *       rawLines:   [ "...raw non-JSON stdout lines..." ],
+ *       splitText:  { text: "...", splitAt: <byte offset> },  // UTF-8 chunk test
+ *       stderr:     "...",
+ *       exitCode:   0,
+ *       hangMs:     0        // stay alive this long before exiting
+ *     }
+ */
+
 import fs from "node:fs";
-import path from "node:path";
+import { spawn } from "node:child_process";
+import process from "node:process";
 
-import { writeExecutable } from "./helpers.mjs";
+export function runFakeBin() {
+  const recordPath = process.env.CODEFREE_FAKE_RECORD;
+  const scenarioPath = process.env.CODEFREE_FAKE_SCENARIO;
 
-const FIXTURE_TEMPLATE = `#!/usr/bin/env node
-import fs from "node:fs";
-import path from "node:path";
-
-function readFixtureConfig() {
-  const fixturePath = process.env.CODEFREE_FIXTURE_FILE;
-  if (!fixturePath || !fs.existsSync(fixturePath)) {
-    return { mode: "happy", stdout: "fake codefree default output", exitCode: 0 };
-  }
-  try {
-    return JSON.parse(fs.readFileSync(fixturePath, "utf8"));
-  } catch {
-    return { mode: "happy", stdout: "fake codefree default output", exitCode: 0 };
-  }
-}
-
-async function main() {
-  const argv = process.argv.slice(2);
-  const config = readFixtureConfig();
-
-  if (config.recordInvocation) {
-    const recordPath = config.recordInvocation;
-    const record = {
-      argv,
-      cwd: process.cwd(),
-      env: {
-        CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA ?? null,
-        CODEFREE_COMPANION_SESSION_ID: process.env.CODEFREE_COMPANION_SESSION_ID ?? null
-      },
-      timestamp: new Date().toISOString()
-    };
-    fs.appendFileSync(recordPath, JSON.stringify(record) + "\\n", "utf8");
-  }
-
-  switch (config.mode) {
-    case "happy": {
-      const lines = (config.stdoutLines ?? [config.stdout ?? "fake codefree completed"]).filter(Boolean);
-      for (const line of lines) {
-        process.stdout.write(line + "\\n");
-      }
-      process.exit(config.exitCode ?? 0);
-      break;
-    }
-    case "fail": {
-      if (config.stderr) {
-        process.stderr.write(config.stderr + "\\n");
-      }
-      process.exit(config.exitCode ?? 1);
-      break;
-    }
-    case "slow": {
-      const sleepMs = config.sleepMs ?? 5000;
-      if (config.preSleepLine) {
-        process.stdout.write(config.preSleepLine + "\\n");
-      }
-      const sentinel = config.sentinelFile;
-      if (sentinel) {
-        fs.writeFileSync(sentinel, String(process.pid), "utf8");
-      }
-      // ignore SIGTERM briefly to allow process group test, but DO exit on signal
-      process.on("SIGTERM", () => {
-        if (config.sigtermSentinel) {
-          try { fs.writeFileSync(config.sigtermSentinel, String(process.pid)); } catch {}
-        }
-        process.exit(143);
-      });
-      await new Promise((resolve) => setTimeout(resolve, sleepMs));
-      process.stdout.write("done\\n");
-      process.exit(0);
-      break;
-    }
-    default: {
-      process.stderr.write("unknown fixture mode: " + config.mode + "\\n");
-      process.exit(2);
-    }
-  }
-}
-
-main();
-`;
-
-export function installFakeCodefree(fakeBinDir) {
-  if (process.platform === "win32") {
-    // On Windows, spawn cannot directly execute a shebang'd extensionless file.
-    // Write the fixture body as an importable .mjs and a .cmd shim that calls it
-    // via node so the binary resolver can find "codefree.cmd" through PATHEXT.
-    const implPath = path.join(fakeBinDir, "codefree-impl.mjs");
-    fs.writeFileSync(implPath, FIXTURE_TEMPLATE, "utf8");
-
-    const nodeBin = process.execPath.replace(/\\/g, "\\\\");
-    const implEscaped = implPath.replace(/\\/g, "\\\\");
-    const cmdBody = `@echo off\r\n"${nodeBin}" "${implEscaped}" %*\r\n`;
-    const cmdPath = path.join(fakeBinDir, "codefree.cmd");
-    fs.writeFileSync(cmdPath, cmdBody, "utf8");
-    return cmdPath;
-  }
-
-  // POSIX: extensionless executable with shebang
-  const binPath = path.join(fakeBinDir, "codefree");
-  writeExecutable(binPath, FIXTURE_TEMPLATE);
-  return binPath;
-}
-
-export function writeFixtureConfig(tempDir, config) {
-  const filePath = path.join(tempDir, "fixture.json");
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2), "utf8");
-  return filePath;
-}
-
-export function makeFakeBinEnv(env, fixtureFile, recordPath = null) {
-  const next = { ...env, CODEFREE_FIXTURE_FILE: fixtureFile };
   if (recordPath) {
-    next.CODEFREE_FIXTURE_RECORD = recordPath;
+    fs.writeFileSync(
+      recordPath,
+      JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }, null, 2),
+      "utf8"
+    );
   }
-  return next;
+
+  const scenario = scenarioPath
+    ? JSON.parse(fs.readFileSync(scenarioPath, "utf8"))
+    : { events: [], exitCode: 0 };
+
+  // Note: lines are written with explicit \n and NO extra encoding layer so
+  // the companion's readline sees exactly one event per line. splitText is
+  // written as raw bytes split mid-character to prove UTF-8 reassembly.
+  const lines = [];
+  for (const event of scenario.events ?? []) {
+    lines.push(JSON.stringify(event));
+  }
+  for (const raw of scenario.rawLines ?? []) {
+    lines.push(raw);
+  }
+
+  if (lines.length > 0) {
+    process.stdout.write(`${lines.join("\n")}\n`);
+  }
+
+  if (scenario.splitText) {
+    // One complete JSON event line, written as raw UTF-8 bytes split at the
+    // given byte offset (mid-character) to prove UTF-8 reassembly.
+    const eventLine = JSON.stringify({
+      type: "text",
+      sessionID: "ses-split",
+      part: { type: "text", text: scenario.splitText.text }
+    });
+    const bytes = Buffer.from(eventLine, "utf8");
+    const at = Math.min(scenario.splitText.splitAt, bytes.length - 1);
+    process.stdout.write(bytes.subarray(0, at));
+    process.stdout.write(bytes.subarray(at));
+    process.stdout.write("\n");
+  }
+
+  if (scenario.stderr) {
+    process.stderr.write(scenario.stderr);
+  }
+
+  // Let stdout drain naturally instead of process.exit, which can truncate
+  // pending pipe writes.
+  const finish = () => {
+    process.exitCode = typeof scenario.exitCode === "number" ? scenario.exitCode : 0;
+  };
+
+  if (scenario.grandchild) {
+    // Spawn a same-process-group grandchild (detached: false so group kills
+    // reach it) with stdio ignored. When combined with hangMs the direct
+    // child stays alive until the timeout group-SIGTERM kills it, leaving
+    // the SIGTERM-immune grandchild behind — reproducing the F3 leak that
+    // only the companion's armed SIGKILL grace timer can clean up.
+    const child = spawn(process.execPath, [scenario.grandchild.scriptFile], {
+      stdio: "ignore",
+      detached: false
+    });
+    child.unref();
+  }
+
+  if (scenario.hangMs > 0) {
+    // Hang until the companion (timeout or signal) kills this process tree.
+    // Record the fake child's pid so tests can verify the kill happened.
+    // The hangMs timer bounds the process lifetime so a leaked orphan (e.g.
+    // after a test failure) can never outlive the test run by much.
+    const pidPath = scenario.hangPidFile;
+    if (pidPath) {
+      fs.writeFileSync(pidPath, String(process.pid), "utf8");
+    }
+    setInterval(() => {}, 60_000);
+    setTimeout(() => process.exit(0), scenario.hangMs);
+  } else {
+    finish();
+  }
 }

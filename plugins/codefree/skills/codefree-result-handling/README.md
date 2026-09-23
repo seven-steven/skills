@@ -22,7 +22,7 @@
 
 **失败**：
 
-若 CLI 返回错误，subagent 返回原始错误输出。缺少 codefree 或认证时，会说明需要安装 codefree 或配置 `CODEFREE_BIN`。随后明确说明本次委派已结束并将控制权交回调用方；不会自行实现、重试或执行额外命令。
+若 CLI 返回错误，subagent 返回原始错误输出。缺少 codefree-o 或认证时，会说明需要安装 codefree-o 或配置 `CODEFREE_BIN`（默认 `codefree-o`）。随后明确说明本次委派已结束并将控制权交回调用方；不会自行实现、重试或执行额外命令。
 
 **部分完成**：
 
@@ -36,6 +36,6 @@ subagent 保留 codefree 对已完成和未完成事项的原始说明，要求�
 
 ## 限制
 
-- **仅在 codefree-task subagent 内有效**：命令层直接执行的后台任务不会经过这个 subagent；其 job ID/状态输出由 companion script 提供。
-- **不解析或修复 codefree 结果**：skill 不会验证 diff 的正确性、补全代码或解决原始结果中的问题。
+- **仅在 codefree-task subagent 内有效**：后台运行的中间进度与停止由 Claude Code 原生后台能力（`/tasks` 与 `TaskStop`）管理，本 skill 只约束每次委派最终结果的呈现。
+- **不解析或修复 codefree-o 结果**：skill 不会验证 diff 的正确性、补全代码或解决原始结果中的问题。
 - **不自动重试**：后续委派必须由调用方显式决定。

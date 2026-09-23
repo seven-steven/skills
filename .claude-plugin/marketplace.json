@@ -38,7 +38,7 @@
       "name": "codefree",
       "source": "./plugins/codefree",
       "strict": false,
-      "description": "在 Claude Code 内通过命令与 subagent 将编码任务委托给 codefree（qwen-code fork）CLI；“研发云”路由由上层编排策略配置。"
+      "description": "通过 /codefree:task 命令与专用 subagent 将编码任务委派给 codefree-o CLI（--auto 自动批准模式，存在风险）；“研发云”路由由上层编排策略配置。"
     }
   ]
 }

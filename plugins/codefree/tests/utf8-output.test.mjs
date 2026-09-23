@@ -1,47 +1,49 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
+import path from "node:path";
 
-const CJK_TEXT = "查询研发云工作项";
+import { cleanupSandbox, makeSandbox, readJsonFile, runCompanion, writeJsonFile } from "./helpers.mjs";
 
-function spawnByteWriter(text, fd = "stdout") {
-  const script = `
-const buf = Buffer.from(${JSON.stringify(text)}, "utf8");
-for (let i = 0; i < buf.length; i++) {
-  process.${fd}.write(buf.subarray(i, i + 1));
-}
-process.${fd}.write(Buffer.from("\\n", "utf8"));
-`;
-  return spawn(process.execPath, ["-e", script], {
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true
-  });
-}
+test("task - multi-byte UTF-8 text split across pipe chunks is reassembled", () => {
+  const sandbox = makeSandbox();
+  try {
+    // Covers CJK (3-byte), emoji (4-byte) and accented (2-byte) chars so the
+    // split point lands mid-character no matter the offset chosen below.
+    const tricky = "修复完成 🎉 ça va — settings.json 更新完毕 ✅";
+    sandbox.env.CODEFREE_FAKE_SCENARIO = writeJsonFile(path.join(sandbox.tempDir, "scenario.json"), {
+      splitText: { text: tricky, splitAt: 7 },
+      exitCode: 0
+    });
 
-test("stdout: setEncoding preserves CJK across chunk-split boundaries", (t, done) => {
-  const child = spawnByteWriter(CJK_TEXT, "stdout");
-  child.stdout.setEncoding("utf8");
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      ...sandbox,
+      input: "go"
+    });
 
-  const lines = [];
-  const rl = createInterface({ input: child.stdout });
-  rl.on("line", (line) => lines.push(line));
-
-  child.on("close", () => {
-    assert.deepEqual(lines, [CJK_TEXT]);
-    done();
-  });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.stdout.includes(tricky), `expected reassembled text, got: ${result.stdout}`);
+  } finally {
+    cleanupSandbox(sandbox);
+  }
 });
 
-test("stderr: setEncoding preserves CJK across chunk-split boundaries", (t, done) => {
-  const child = spawnByteWriter(CJK_TEXT, "stderr");
-  child.stderr.setEncoding("utf8");
-
-  const chunks = [];
-  child.stderr.on("data", (chunk) => chunks.push(chunk));
-
-  child.on("close", () => {
-    assert.equal(chunks.join("").trimEnd(), CJK_TEXT);
-    done();
-  });
+test("task - non-ASCII prompt reaches the fake binary verbatim", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_FAKE_SCENARIO = writeJsonFile(path.join(sandbox.tempDir, "scenario.json"), {
+      events: [{ type: "text", sessionID: "s", part: { type: "text", text: "好的 ✅" } }],
+      exitCode: 0
+    });
+    const prompt = "请修复 src/登录.ts 的表单校验 — 目标:100% 覆盖 🚀";
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      ...sandbox,
+      input: prompt
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const record = readJsonFile(sandbox.recordFile);
+    const sep = record.argv.indexOf("--");
+    assert.equal(record.argv[sep + 1], prompt);
+  } finally {
+    cleanupSandbox(sandbox);
+  }
 });

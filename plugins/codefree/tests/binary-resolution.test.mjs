@@ -9,6 +9,25 @@ import {
   resolveBinaryPath,
 } from "../scripts/lib/process.mjs";
 
+test("resolveBinaryPath - POSIX absolute CODEFREE_BIN path resolves directly", () => {
+  // Regression (F2): an absolute CODEFREE_BIN used to be split into PATH
+  // dirs + filename on POSIX and never found. process.execPath is a real,
+  // executable absolute file on every platform.
+  const resolved = resolveBinaryPath(process.execPath, {
+    platform: "linux",
+    env: { PATH: "" }
+  });
+  assert.equal(resolved, process.execPath);
+
+  const candidates = getBinaryCandidates(process.execPath, {
+    platform: "linux",
+    env: { PATH: "" }
+  });
+  assert.deepEqual(candidates, [
+    { dir: path.dirname(process.execPath), filename: path.basename(process.execPath) }
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // getBinaryCandidates — win32
 // ---------------------------------------------------------------------------

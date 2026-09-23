@@ -1,6 +1,6 @@
 {
   "name": "codefree",
   "version": "0.1.0",
-  "description": "Delegate coding tasks to the codefree CLI through Claude Code commands and a dedicated subagent. Keyword routing such as '研发云' is configured by the caller's orchestration policy.",
+  "description": "Delegate coding tasks to the codefree-o CLI through the /codefree:task command and a dedicated subagent (runs with --auto auto-approval, use only in trusted repositories). Keyword routing such as '研发云' is configured by the caller's orchestration policy.",
   "author": { "name": "Seven" }
 }
