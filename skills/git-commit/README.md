@@ -163,8 +163,12 @@ SKILL.md
 │   └── 通过主仓库 user.email 扫描 HEAD 可达的最近十条作者提交
 ├── scripts/validate.mjs
 │   ├── 接收可选 --task-id 并生成独立末尾 <footer>
-│   ├── scripts/lib/input.mjs
-│   └── scripts/lib/commit-message.mjs 解析 subject / body / trailers / footer
+│   └── 复用 scripts/lib/ 下各模块
+├── scripts/lib/args.mjs
+│   ├── parseCommitArgs 解析 --cwd / --task-id / positional message
+│   └── readMessageInput 从 argv 或 stdin 读取消息
+├── scripts/lib/commit-message.mjs
+│   └── 解析 subject / body / trailers / footer 并校验
 └── scripts/commit.mjs
     ├── 复用同一校验与 footer 规则
     ├── 支持 --cwd <submodule-path> 和可选 --task-id

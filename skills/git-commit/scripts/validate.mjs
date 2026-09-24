@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { validateMessage, formatErrorReport, addTaskIdFooter } from "./lib/commit-message.mjs";
-import { readMessageInput } from "./lib/input.mjs";
+import { parseCommitArgs, readMessageInput } from "./lib/args.mjs";
 import { normalizeTaskId } from "./lib/task-id.mjs";
 
 function printUsage() {
@@ -9,34 +9,8 @@ function printUsage() {
   );
 }
 
-function parseArgs(argv) {
-  let cwd;
-  let taskId;
-  let messageArg;
-  for (let index = 2; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--cwd" || arg === "--task-id") {
-      const value = argv[index + 1];
-      if (value === undefined || value.startsWith("--")) return { error: true };
-      if (arg === "--cwd") {
-        if (cwd !== undefined) return { error: true };
-        cwd = value;
-      } else {
-        if (taskId !== undefined) return { error: true };
-        taskId = value;
-      }
-      index += 1;
-    } else if (arg.startsWith("--") || messageArg !== undefined) {
-      return { error: true };
-    } else {
-      messageArg = arg;
-    }
-  }
-  return { cwd, taskId, messageArg };
-}
-
 async function main() {
-  const parsed = parseArgs(process.argv);
+  const parsed = parseCommitArgs(process.argv);
   if (parsed.error) {
     printUsage();
     process.exit(2);
