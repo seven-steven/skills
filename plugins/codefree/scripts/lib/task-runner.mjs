@@ -17,12 +17,10 @@ import { createInterface } from "node:readline";
 import process from "node:process";
 
 import { UsageError } from "./errors.mjs";
-import { needsShellForBinary, resolveBinaryPath, terminateProcessTree } from "./process.mjs";
-import { buildRunPayload, parseEventLine } from "./run-events.mjs";
+import { needsShellForBinary, resolveBinaryPath, STDERR_CAP_BYTES, terminateProcessTree, terminateTree } from "./process.mjs";
+import { buildRunPayload, failedPayload, parseEventLine } from "./run-events.mjs";
 
 export const CODEFREE_BIN = process.env.CODEFREE_BIN ?? "codefree-o";
-const SIGKILL_GRACE_MS = 5_000;
-const STDERR_CAP_BYTES = 256 * 1024;
 
 // 传输层选择：serve（spawn codefree-o serve + 本地 HTTP API）是默认通道；
 // run（spawn codefree-o run --format json --auto）保留为逃生通道——codefree-o
@@ -60,21 +58,6 @@ export function buildCodefreeArgv({ prompt, options, resolvedCwd }) {
     argv.push("--", prompt);
   }
   return argv;
-}
-
-function killTreeHard(pid) {
-  // Last-resort SIGKILL after the graceful group TERM.
-  try {
-    process.kill(-pid, "SIGKILL");
-    return;
-  } catch {
-    // fall through to single-process kill
-  }
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // already gone
-  }
 }
 
 const PROXY_URL_PATTERN = /^https?:\/\/\S+$/;
@@ -158,30 +141,12 @@ export function runCodefree({ argv, cwd, timeoutMs }) {
   return new Promise((resolve) => {
     const resolved = resolveBinaryPath(CODEFREE_BIN);
     if (resolved === null) {
-      const rendered =
-        `Failed to start codefree-o: binary not found on PATH ` +
-        `(CODEFREE_BIN=${CODEFREE_BIN}). Install codefree-o or point ` +
-        "CODEFREE_BIN at the binary.";
       resolve({
-        rendered,
         exitCode: 127,
-        payload: {
-          status: "failed",
-          reason: "binary-not-found",
+        payload: failedPayload("binary-not-found", {
           stderr: `codefree-o binary not found on PATH (CODEFREE_BIN=${CODEFREE_BIN})`,
-          text: "",
-          sessionID: null,
-          toolUses: [],
-          errorEvents: [],
-          events: [],
-          malformedLines: [],
-          degraded: false,
-          exitCode: 127,
-          signal: null,
-          timedOut: false,
-          durationMs: 0,
-          eventCount: 0
-        }
+          exitCode: 127
+        })
       });
       return;
     }
@@ -193,34 +158,15 @@ export function runCodefree({ argv, cwd, timeoutMs }) {
     // only a native codefree-o executable is supported. CODEFREE_BIN is an
     // untrusted env value, so this refusal is unconditional, not value-based.
     if (needsShellForBinary(resolved)) {
-      const rendered =
-        "Refusing to run: codefree-o resolved to a .cmd/.bat shim, which " +
-        "requires a shell-mediated spawn (word splitting, space loss, and " +
-        "cmd.exe metacharacter risks). Install codefree-o as a native " +
-        "executable and point CODEFREE_BIN at it.";
       resolve({
-        rendered,
         exitCode: 2,
-        payload: {
-          status: "failed",
-          reason: "shell-mediated-spawn-refused",
+        payload: failedPayload("shell-mediated-spawn-refused", {
           stderr:
             "Refusing a shell-mediated spawn via .cmd/.bat shim. " +
             "Install codefree-o as a native executable (e.g. .exe) and " +
             "point CODEFREE_BIN at it.",
-          text: "",
-          sessionID: null,
-          toolUses: [],
-          errorEvents: [],
-          events: [],
-          malformedLines: [],
-          degraded: false,
-          exitCode: 2,
-          signal: null,
-          timedOut: false,
-          durationMs: 0,
-          eventCount: 0
-        }
+          exitCode: 2
+        })
       });
       return;
     }
@@ -306,27 +252,12 @@ export function runCodefree({ argv, cwd, timeoutMs }) {
 
       const payload =
         spawnError !== null
-          ? {
-              status: "failed",
-              reason: "spawn-error",
-              stderr: spawnError.message,
-              text: "",
-              sessionID: null,
-              toolUses: [],
-              errorEvents: [],
-              events: [],
-              malformedLines: [],
-              degraded: false,
+          ? failedPayload("spawn-error", {
+              stderr: `Failed to start codefree-o: ${spawnError.message}`,
               exitCode: 127,
-              signal: null,
-              timedOut: false,
               durationMs: Date.now() - startedAt,
-              command: auditCommand,
-              eventCount: 0,
-              // F1: full field set + rendered so downstream printing never
-              // has to fall back to renderRunResult on a partial payload.
-              rendered: `Failed to start codefree-o: ${spawnError.message}`
-            }
+              command: auditCommand
+            })
           : buildRunPayload({
               events,
               malformedLines,
@@ -343,10 +274,9 @@ export function runCodefree({ argv, cwd, timeoutMs }) {
 
     timeoutTimer = setTimeout(() => {
       timedOut = true;
-      terminateProcessTree(child.pid);
-      // Not unref'd on purpose: the companion must stay alive until the
-      // SIGKILL grace fires, even if the direct child closes early (F3).
-      killTimer = setTimeout(() => killTreeHard(child.pid), SIGKILL_GRACE_MS);
+      // terminateTree sends SIGTERM now and arms a SIGKILL grace timer.
+      // The grace timer is NOT unref'd (F3: grandchild leak defence).
+      killTimer = terminateTree(child.pid).killTimer;
     }, timeoutMs);
     if (timeoutTimer.unref) timeoutTimer.unref();
 

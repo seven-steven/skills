@@ -27,9 +27,9 @@
  * 关键行为：
  *   - prompt 只进 HTTP body，永不进 argv/shell —— 延续 companion 的红线设计；
  *   - serve 进程 POSIX detached 独立进程组，结束（成功/失败/超时/信号）统一
- *     terminateProcessTree → KILL_GRACE_MS → SIGKILL 兜底（对齐 run 路径的
- *     F3 语义：SIGTERM 免疫的孙进程靠 grace timer 清理）。按 PID kill，绝不
- *     pkill -f（会误杀 wrapper shell）；
+ *     调 process.mjs 的 terminateTree：SIGTERM 组杀 → 宽限 → SIGKILL 兜底
+ *     （与 run 路径共用同一实现；F3 语义：SIGTERM 免疫的孙进程靠 grace
+ *     timer 清理）。按 PID kill，绝不 pkill -f（会误杀 wrapper shell）；
  *   - 轮询完成判定双条件：存在 assistant 且 info.time.completed 非空的消息，
  *     且 /session/status 报 idle；
  *   - 权限自动放行（--auto 等价）：build agent 基线规则下常规工具无事件直接
@@ -44,14 +44,11 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import process from "node:process";
 
-import { needsShellForBinary, resolveBinaryPath, terminateProcessTree } from "./process.mjs";
-import { buildRunPayload } from "./run-events.mjs";
+import { needsShellForBinary, resolveBinaryPath, STDERR_CAP_BYTES, terminateProcessTree, terminateTree } from "./process.mjs";
+import { buildRunPayload, failedPayload } from "./run-events.mjs";
 
 // Banner 出现的启动窗口；banner 后立即可 POST /session（实测 ~1.4s）。
 export const SERVE_STARTUP_TIMEOUT_MS = 30_000;
-// 优雅 SIGTERM 后的 SIGKILL 宽限，对齐 companion run 路径的 SIGKILL_GRACE_MS
-// 与 F3 语义（孙进程泄漏防线）。仅作为模块内常量，不跨文件导入私有值。
-export const SERVE_KILL_GRACE_MS = 5_000;
 export const SERVE_POLL_INTERVAL_MS = 1_000;
 // 单个 HTTP 请求的硬超时：serve 半死（TCP 挂起不响应）时轮询请求必须及时
 // 失败，否则 deadline 检查永远走不到，总超时不触发，detached 的 serve 树
@@ -63,7 +60,6 @@ export const SERVE_HTTP_TIMEOUT_MS = 10_000;
 // prompt_async 仍返回 204 的 codefree-o 缺陷），立即以明确 reason 失败，
 // 不傻等总超时。
 export const SERVE_PROMPT_DROP_DETECT_MS = 60_000;
-const STDERR_CAP_BYTES = 256 * 1024;
 
 const BANNER_PATTERN = /codefree-o server listening on (https?:\/\/\S+)/;
 
@@ -224,40 +220,27 @@ export function startServe({
   return new Promise((resolve) => {
     const resolved = resolveBinaryPath(binary);
     if (resolved === null) {
-      const rendered =
-        `Failed to start codefree-o: binary not found on PATH ` +
-        `(CODEFREE_BIN=${binary}). Install codefree-o or point ` +
-        "CODEFREE_BIN at the binary.";
       resolve({
         ok: false,
-        payload: {
-          status: "failed",
-          reason: "binary-not-found",
+        payload: failedPayload("binary-not-found", {
           stderr: `codefree-o binary not found on PATH (CODEFREE_BIN=${binary})`,
-          text: "", sessionID: null, toolUses: [], errorEvents: [], events: [],
-          malformedLines: [], degraded: false, exitCode: 127, signal: null,
-          timedOut: false, durationMs: 0, eventCount: 0, rendered
-        }
+          exitCode: 127
+        })
       });
       return;
     }
     // 与 run 路径一致的 fail-closed shell 策略：.cmd/.bat shim 一律拒绝。
     if (needsShellForBinary(resolved)) {
-      const rendered =
-        "Refusing to run: codefree-o resolved to a .cmd/.bat shim, which " +
-        "requires a shell-mediated spawn (word splitting, space loss, and " +
-        "cmd.exe metacharacter risks). Install codefree-o as a native " +
-        "executable and point CODEFREE_BIN at it.";
       resolve({
         ok: false,
-        payload: {
-          status: "failed",
-          reason: "shell-mediated-spawn-refused",
-          stderr: rendered,
-          text: "", sessionID: null, toolUses: [], errorEvents: [], events: [],
-          malformedLines: [], degraded: false, exitCode: 2, signal: null,
-          timedOut: false, durationMs: 0, eventCount: 0, rendered
-        }
+        payload: failedPayload("shell-mediated-spawn-refused", {
+          stderr:
+            "Refusing to run: codefree-o resolved to a .cmd/.bat shim, which " +
+            "requires a shell-mediated spawn (word splitting, space loss, and " +
+            "cmd.exe metacharacter risks). Install codefree-o as a native " +
+            "executable and point CODEFREE_BIN at it.",
+          exitCode: 2
+        })
       });
       return;
     }
@@ -276,22 +259,19 @@ export function startServe({
     const startedAt = now();
     let settled = false;
 
-    const fail = (reason, rendered) => {
+    const fail = (reason, message) => {
       if (settled) return;
       settled = true;
       clearTimeout(watchdog);
       offSignalHandlers();
       terminateProcessTree(child.pid);
+      const stderrLogText = stderrLog.toString();
       resolve({
         ok: false,
-        payload: {
-          status: "failed",
-          reason,
-          stderr: stderrLog.toString(),
-          text: "", sessionID: null, toolUses: [], errorEvents: [], events: [],
-          malformedLines: [], degraded: false, exitCode: 1, signal: null,
-          timedOut: false, durationMs: now() - startedAt, eventCount: 0, rendered
-        }
+        payload: failedPayload(reason, {
+          stderr: message ? `${message}\n${stderrLogText}` : stderrLogText,
+          durationMs: now() - startedAt
+        })
       });
     };
 
@@ -358,22 +338,6 @@ export function startServe({
 // 任务编排
 // ---------------------------------------------------------------------------
 
-function killServeTree(child, { sleep }) {
-  // 优雅组 SIGTERM → 宽限 → SIGKILL 兜底（F3：孙进程可能免疫 SIGTERM）。
-  terminateProcessTree(child.pid);
-  return sleep(SERVE_KILL_GRACE_MS).then(() => {
-    try {
-      process.kill(-child.pid, "SIGKILL");
-    } catch {
-      try {
-        process.kill(child.pid, "SIGKILL");
-      } catch {
-        // already gone
-      }
-    }
-  });
-}
-
 function buildServeStderr(stdoutLog, stderrLog, transientErrors) {
   const sections = [];
   const stdout = stdoutLog?.toString().trim();
@@ -384,30 +348,6 @@ function buildServeStderr(stdoutLog, stderrLog, transientErrors) {
     sections.push(`--- serve transport errors ---\n${transientErrors.slice(-20).join("\n")}`);
   }
   return sections.join("\n\n");
-}
-
-function failedPayload(reason, { stderr = "", events = [], durationMs = 0, rendered }) {
-  // 失败文案融合进 stderr 首行而非设置 payload.rendered：emitResult 优先
-  // 使用 rendered 时会完全跳过 renderRunResult，导致 stderr 段（serve 日志、
-  // 传输错误等关键证据）被整体吞掉。
-  const finalStderr = rendered ? `${rendered}\n${stderr}` : stderr;
-  return {
-    status: "failed",
-    reason,
-    stderr: finalStderr,
-    text: "",
-    sessionID: null,
-    toolUses: [],
-    errorEvents: [],
-    events,
-    malformedLines: [],
-    degraded: false,
-    exitCode: 1,
-    signal: null,
-    timedOut: false,
-    durationMs,
-    eventCount: events.length
-  };
 }
 
 /**
@@ -432,7 +372,7 @@ export async function runServeTask({
   if (typeof fetcher !== "function") {
     return {
       payload: failedPayload("no-fetch-runtime", {
-        rendered: "This Node runtime has no global fetch; cannot drive the serve transport."
+        stderr: "This Node runtime has no global fetch; cannot drive the serve transport."
       }),
       exitCode: 1
     };
@@ -456,7 +396,7 @@ export async function runServeTask({
   if (!serve) {
     return {
       payload: failedPayload("serve-start-failed", {
-        rendered: "[codefree-o] FAILED: serve-start-failed (unreachable)"
+        stderr: "[codefree-o] FAILED: serve-start-failed (unreachable)"
       }),
       exitCode: 1
     };
@@ -479,7 +419,7 @@ export async function runServeTask({
         method: "POST"
       }).catch(() => {});
     }
-    killServeTree(child, { sleep }).finally(() => {
+    terminateTree(child.pid, { sleep }).finally(() => {
       offSignalHandlers();
       process.kill(process.pid, signalName);
     });
@@ -499,11 +439,11 @@ export async function runServeTask({
       if (!latest?.id) {
         return {
           payload: failedPayload("session-not-found", {
-            stderr: buildServeStderr(stdoutLog, stderrLog, transientErrors),
-            durationMs: now() - startedAt,
-            rendered:
+            stderr:
               "[codefree-o] FAILED: session-not-found (--continue: no existing " +
-              `session in directory ${cwd})`
+              `session in directory ${cwd})\n` +
+              buildServeStderr(stdoutLog, stderrLog, transientErrors),
+            durationMs: now() - startedAt
           }),
           exitCode: 1
         };
@@ -648,17 +588,17 @@ export async function runServeTask({
       // 置于丢弃检测之前：serve 死了消息同样不会来，先归因到 serve-died。
       if (child.exitCode !== null || child.signalCode !== null) {
         const diedPayload = failedPayload("serve-died", {
-          stderr: buildServeStderr(stdoutLog, stderrLog, [
-            ...transientErrors,
-            `serve process exited (code=${child.exitCode} signal=${child.signalCode})`
-          ]),
-          events: [...mapMessagesToEvents(lastMessages, sessionID), ...questionEvents.values()],
-          durationMs: now() - startedAt,
-          rendered:
+          stderr:
             `[codefree-o] FAILED: serve-died (serve process exited mid-task: ` +
-            `code=${child.exitCode} signal=${child.signalCode})`
+            `code=${child.exitCode} signal=${child.signalCode})\n` +
+            buildServeStderr(stdoutLog, stderrLog, [
+              ...transientErrors,
+              `serve process exited (code=${child.exitCode} signal=${child.signalCode})`
+            ]),
+          events: [...mapMessagesToEvents(lastMessages, sessionID), ...questionEvents.values()],
+          durationMs: now() - startedAt
         });
-        await killServeTree(child, { sleep });
+        await terminateTree(child.pid, { sleep });
         offSignalHandlers();
         return { payload: diedPayload, exitCode: 1 };
       }
@@ -667,20 +607,20 @@ export async function runServeTask({
       // 常见于上游认证不可达（代理/网络窗口），stderr 里的 serve 日志有据可查。
       if (lastMessages.length <= baselineCount && now() - promptSentAt > SERVE_PROMPT_DROP_DETECT_MS) {
         const droppedPayload = failedPayload("serve-prompt-dropped", {
-          stderr: buildServeStderr(stdoutLog, stderrLog, [
-            ...transientErrors,
-            `no new message within ${SERVE_PROMPT_DROP_DETECT_MS / 1000}s of prompt_async — ` +
-              "serve accepted the prompt (HTTP 204) but silently dropped it. " +
-              "Typical cause: upstream auth unreachable (check proxy/network to srdcloud.cn); " +
-              "see serve output above and README."
-          ]),
-          events: [...mapMessagesToEvents(lastMessages, sessionID), ...questionEvents.values()],
-          durationMs: now() - startedAt,
-          rendered:
+          stderr:
             "[codefree-o] FAILED: serve-prompt-dropped (prompt accepted but silently " +
-            "dropped — upstream auth/providers unavailable; check proxy to srdcloud.cn)"
+            "dropped — upstream auth/providers unavailable; check proxy to srdcloud.cn)\n" +
+            buildServeStderr(stdoutLog, stderrLog, [
+              ...transientErrors,
+              `no new message within ${SERVE_PROMPT_DROP_DETECT_MS / 1000}s of prompt_async — ` +
+                "serve accepted the prompt (HTTP 204) but silently dropped it. " +
+                "Typical cause: upstream auth unreachable (check proxy/network to srdcloud.cn); " +
+                "see serve output above and README."
+            ]),
+          events: [...mapMessagesToEvents(lastMessages, sessionID), ...questionEvents.values()],
+          durationMs: now() - startedAt
         });
-        await killServeTree(child, { sleep });
+        await terminateTree(child.pid, { sleep });
         offSignalHandlers();
         return { payload: droppedPayload, exitCode: 1 };
       }
@@ -698,7 +638,7 @@ export async function runServeTask({
         // serve 可能已不可达；杀树才是可靠清理。
       }
     }
-    await killServeTree(child, { sleep });
+    await terminateTree(child.pid, { sleep });
     offSignalHandlers();
 
     const events = [
@@ -718,14 +658,15 @@ export async function runServeTask({
     return { payload, exitCode: payload.status === "completed" ? 0 : payload.exitCode };
   } catch (err) {
     // prompt 提交/会话创建等前置步骤失败：仍要清理 serve 树。
-    await killServeTree(child, { sleep });
+    await terminateTree(child.pid, { sleep });
     offSignalHandlers();
     return {
       payload: failedPayload("serve-http-error", {
-        stderr: buildServeStderr(stdoutLog, stderrLog, [...transientErrors, String(err.message)]),
+        stderr:
+          `[codefree-o] FAILED: serve-http-error (${err.message})\n` +
+          buildServeStderr(stdoutLog, stderrLog, [...transientErrors, String(err.message)]),
         events: [...questionEvents.values()],
-        durationMs: now() - startedAt,
-        rendered: `[codefree-o] FAILED: serve-http-error (${err.message})`
+        durationMs: now() - startedAt
       }),
       exitCode: 1
     };

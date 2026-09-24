@@ -198,6 +198,65 @@ export function terminateProcessTree(pid, options = {}) {
   }
 }
 
+/**
+ * Shared cap for captured stderr (256 KiB). Both the run and serve paths cap
+ * their stderr buffers at this limit to avoid memory exhaustion from a noisy
+ * process.
+ */
+export const STDERR_CAP_BYTES = 256 * 1024;
+
+/**
+ * Full SIGTERM → grace → SIGKILL tree termination ritual.
+ *
+ * Sends SIGTERM to the process group (or the process itself on win32), then
+ * arms a timer that fires a SIGKILL fallback after `graceMs`. This guarantees
+ * that grandchildren that ignore SIGTERM are still cleaned up (F3 semantics).
+ *
+ * Returns `{ killTimer }` so callers can manage unref behaviour on the grace
+ * timer. The sleep is injectable so serve tests can advance virtual time
+ * instead of wall-clock sleeping.
+ */
+export function terminateTree(pid, { graceMs = 5_000, sleep = null, platform = process.platform, killImpl = process.kill.bind(process) } = {}) {
+  terminateProcessTree(pid, { platform, killImpl });
+
+  // When a `sleep` impl is injected (serve tests advance virtual time), the
+  // grace is awaitable: return a promise that SIGKILLs after `graceMs`.
+  if (sleep !== null) {
+    return sleep(graceMs).then(() => {
+      try {
+        killImpl(-pid, "SIGKILL");
+        return;
+      } catch {
+        // fall through
+      }
+      try {
+        killImpl(pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    });
+  }
+
+  // Standard path: arm a setTimeout for the SIGKILL grace. The caller
+  // decides whether to unref it (the run path keeps it armed so the event
+  // loop stays alive until the grandchild-leak defence fires — F3).
+  const killTimer = setTimeout(() => {
+    try {
+      killImpl(-pid, "SIGKILL");
+      return;
+    } catch {
+      // fall through
+    }
+    try {
+      killImpl(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }, graceMs);
+
+  return { killTimer };
+}
+
 export function formatCommandFailure(result) {
   const parts = [`${result.command} ${result.args.join(" ")}`.trim()];
   if (result.signal) {

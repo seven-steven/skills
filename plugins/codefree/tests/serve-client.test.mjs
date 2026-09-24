@@ -326,7 +326,7 @@ test("runServeTask - silently dropped prompt (no new messages) fails fast as ser
   assert.equal(payload.status, "failed");
   assert.equal(exitCode, 1);
   assert.match(payload.stderr, /silently dropped/);
-  // rendered 必须缺省：emitResult 优先 rendered 会吞掉 stderr 证据段
+  // rendered is never set — renderRunResult is the sole format owner.
   assert.equal(payload.rendered, undefined);
 });
 
@@ -485,7 +485,7 @@ test("startServe - binary not on PATH fails as binary-not-found", async () => {
   });
   assert.equal(result.ok, false);
   assert.equal(result.payload.reason, "binary-not-found");
-  assert.match(result.payload.rendered, /binary not found/);
+  assert.match(result.payload.stderr, /binary not found/);
 });
 
 // ---------------------------------------------------------------------------

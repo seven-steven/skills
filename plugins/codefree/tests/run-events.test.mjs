@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { aggregateRunEvents, buildRunPayload, parseEventLine } from "../scripts/lib/run-events.mjs";
+import { aggregateRunEvents, buildRunPayload, failedPayload, parseEventLine } from "../scripts/lib/run-events.mjs";
 
 const textEvent = (text, sessionID = "ses-1") => ({
   type: "text",
@@ -164,4 +164,52 @@ test("buildRunPayload - degraded flag reflects malformed lines", () => {
   const payload = buildRunPayload({ events: [], malformedLines: ["junk"], exitCode: 0 });
   assert.equal(payload.degraded, true);
   assert.equal(payload.status, "failed");
+});
+
+// ---------------------------------------------------------------------------
+// failedPayload
+// ---------------------------------------------------------------------------
+
+test("failedPayload - returns the canonical 16-field shape with defaults", () => {
+  const payload = failedPayload("test-reason");
+  assert.equal(payload.status, "failed");
+  assert.equal(payload.reason, "test-reason");
+  assert.equal(payload.stderr, "");
+  assert.equal(payload.text, "");
+  assert.equal(payload.sessionID, null);
+  assert.deepEqual(payload.toolUses, []);
+  assert.deepEqual(payload.errorEvents, []);
+  assert.deepEqual(payload.events, []);
+  assert.deepEqual(payload.malformedLines, []);
+  assert.equal(payload.degraded, false);
+  assert.equal(payload.exitCode, 1);
+  assert.equal(payload.signal, null);
+  assert.equal(payload.timedOut, false);
+  assert.equal(payload.durationMs, 0);
+  assert.equal(payload.eventCount, 0);
+});
+
+test("failedPayload - overrides merge caller-provided fields", () => {
+  const events = [{ type: "text" }];
+  const payload = failedPayload("boom", {
+    stderr: "something broke",
+    exitCode: 127,
+    durationMs: 42,
+    events,
+    eventCount: events.length
+  });
+  assert.equal(payload.reason, "boom");
+  assert.equal(payload.stderr, "something broke");
+  assert.equal(payload.exitCode, 127);
+  assert.equal(payload.durationMs, 42);
+  assert.equal(payload.eventCount, 1);
+  assert.deepEqual(payload.events, events);
+  // defaults are still there for non-overridden fields
+  assert.equal(payload.text, "");
+  assert.equal(payload.signal, null);
+});
+
+test("failedPayload - does not expose a rendered field (renderer is sole owner)", () => {
+  const payload = failedPayload("test", { stderr: "log" });
+  assert.equal(payload.rendered, undefined);
 });

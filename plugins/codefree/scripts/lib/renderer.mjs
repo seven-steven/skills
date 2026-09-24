@@ -50,7 +50,7 @@ export function emitResult(payload, exitCode, asJson) {
   if (asJson) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
-    process.stdout.write(`${payload.rendered ?? renderRunResult(payload)}\n`);
+    process.stdout.write(`${renderRunResult(payload)}\n`);
   }
   if (payload.status !== "completed") {
     process.exitCode = exitCode !== 0 ? exitCode : 1;

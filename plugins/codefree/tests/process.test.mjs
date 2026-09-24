@@ -5,7 +5,9 @@ import {
   binaryAvailable,
   formatCommandFailure,
   runCommand,
-  terminateProcessTree
+  STDERR_CAP_BYTES,
+  terminateProcessTree,
+  terminateTree
 } from "../scripts/lib/process.mjs";
 
 test("runCommand - captures stdout from echo-ish command", () => {
@@ -148,5 +150,77 @@ test("terminateProcessTree - win32 'not found' message means process is gone", (
   });
   assert.equal(result.method, "taskkill");
   assert.equal(result.delivered, false);
+});
+
+// ---------------------------------------------------------------------------
+// terminateTree
+// ---------------------------------------------------------------------------
+
+test("terminateTree - arms a killTimer that SIGKILLs the group after grace (no sleep)", async () => {
+  const calls = [];
+  const killImpl = (pid, signal) => calls.push({ pid, signal });
+
+  const { killTimer } = terminateTree(4242, {
+    graceMs: 5,
+    platform: "linux",
+    killImpl
+  });
+
+  // SIGTERM is delivered synchronously to the process group.
+  assert.deepEqual(calls[0], { pid: -4242, signal: "SIGTERM" });
+
+  // The grace timer later fires the group SIGKILL (with single-process fallback).
+  await new Promise((resolve) => killTimer.unref ? (killTimer.ref(), resolve()) : resolve());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const signals = calls.filter((c) => c.signal === "SIGKILL");
+  assert.equal(signals.length >= 1, true);
+  assert.equal(signals[0].pid, -4242);
+});
+
+test("terminateTree - sleep variant resolves after SIGKILLing the tree", async () => {
+  const calls = [];
+  const killImpl = (pid, signal) => calls.push({ pid, signal });
+
+  await terminateTree(9999, {
+    graceMs: 1,
+    platform: "linux",
+    killImpl,
+    sleep: async () => {}
+  });
+
+  const signals = calls.map((c) => c.signal);
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+  assert.deepEqual(calls[0], { pid: -9999, signal: "SIGTERM" });
+  assert.deepEqual(calls[1], { pid: -9999, signal: "SIGKILL" });
+});
+
+test("terminateTree - SIGKILL falls back to single process when group kill fails", async () => {
+  const calls = [];
+  const killImpl = (pid, signal) => {
+    calls.push({ pid, signal });
+    if (signal === "SIGKILL" && pid < 0) {
+      const err = new Error("no such group");
+      err.code = "ESRCH";
+      throw err;
+    }
+  };
+
+  await terminateTree(7777, {
+    graceMs: 1,
+    platform: "linux",
+    killImpl,
+    sleep: async () => {}
+  });
+
+  const kills = calls.filter((c) => c.signal === "SIGKILL");
+  assert.deepEqual(kills, [
+    { pid: -7777, signal: "SIGKILL" },
+    { pid: 7777, signal: "SIGKILL" }
+  ]);
+});
+
+test("STDERR_CAP_BYTES - is the shared 256 KiB cap", () => {
+  assert.equal(STDERR_CAP_BYTES, 256 * 1024);
 });
 

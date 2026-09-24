@@ -140,6 +140,35 @@ export function aggregateRunEvents(events, { exitCode = 0, timedOut = false, mal
  * human-readable rendering shows only the result text plus metadata, never
  * the full tool/token stream.
  */
+/**
+ * Build a canonical failed payload with every field filled to its default.
+ *
+ * This is the single authority on the failure payload schema — every module
+ * that produces a failed result calls this factory instead of hand-writing the
+ * 16-field literal, so adding a field is a one-line change here. Callers pass
+ * `overrides` only for the fields that differ from the defaults.
+ */
+export function failedPayload(reason, overrides = {}) {
+  return {
+    status: "failed",
+    reason,
+    stderr: "",
+    text: "",
+    sessionID: null,
+    toolUses: [],
+    errorEvents: [],
+    events: [],
+    malformedLines: [],
+    degraded: false,
+    exitCode: 1,
+    signal: null,
+    timedOut: false,
+    durationMs: 0,
+    eventCount: 0,
+    ...overrides
+  };
+}
+
 export function buildRunPayload({
   events,
   malformedLines = [],
