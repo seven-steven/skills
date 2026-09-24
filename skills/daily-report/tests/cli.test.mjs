@@ -19,6 +19,8 @@ function run(script, args = [], { input, cacheDir } = {}) {
   });
 }
 
+// ── cache.mjs ──────────────────────────────────────────────────────────────────
+
 test("cache.mjs resolve - returns an absolute path", () => {
   const r = run("cache.mjs", ["resolve"]);
   assert.equal(r.status, 0);
@@ -74,6 +76,14 @@ test("cache.mjs - unknown action exits 1 with error message", () => {
   assert.ok(r.stderr.includes("Unknown action"));
 });
 
+test("cache.mjs - read-commit and write-commit actions are removed", () => {
+  const r = run("cache.mjs", ["read-commit", "/repo"]);
+  assert.equal(r.status, 1);
+  assert.ok(r.stderr.includes("Unknown action"), `expected 'Unknown action', got: ${r.stderr}`);
+});
+
+// ── validate.mjs ───────────────────────────────────────────────────────────────
+
 test("validate.mjs - exits 0 and prints 格式校验通过 for valid input", () => {
   const r = run("validate.mjs", [], { input: "- ProjectA-完成功能；\n" });
   assert.equal(r.status, 0);
@@ -84,4 +94,58 @@ test("validate.mjs - exits 1 and prints 格式校验失败 for invalid input", (
   const r = run("validate.mjs", [], { input: "bad line\n" });
   assert.equal(r.status, 1);
   assert.ok(r.stdout.includes("格式校验失败："));
+});
+
+test("validate.mjs - accepts two-segment line", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-完成功能开发；" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - accepts three-segment line", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-用户模块-完成登录功能；" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - accepts multi-line valid input", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-完成功能开发；\n- ProjectB-后端模块-修复接口BUG；" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - rejects empty input", () => {
+  const r = run("validate.mjs", [], { input: "" });
+  assert.equal(r.status, 1);
+  assert.ok(r.stdout.includes("输出不能为空"));
+});
+
+test("validate.mjs - ignores trailing blank lines", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-完成功能开发；\n\n   \n" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - preserves work content with internal hyphens as third segment", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-Module-fix-the-bug；" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - accepts Unicode and Chinese project names", () => {
+  const r = run("validate.mjs", [], { input: "- 数字地球-GIS模块-接入图层；" });
+  assert.equal(r.status, 0);
+});
+
+test("validate.mjs - flags missing '- ' prefix", () => {
+  const r = run("validate.mjs", [], { input: "ProjectA-完成功能；" });
+  assert.equal(r.status, 1);
+  assert.ok(r.stdout.includes("- "));
+});
+
+test("validate.mjs - flags missing '；' suffix", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-完成功能" });
+  assert.equal(r.status, 1);
+  assert.ok(r.stdout.includes("；"));
+});
+
+test("validate.mjs - flags CRLF line endings", () => {
+  const r = run("validate.mjs", [], { input: "- ProjectA-完成功能；\r\n" });
+  assert.equal(r.status, 1);
+  assert.ok(r.stdout.includes("\\r"));
 });

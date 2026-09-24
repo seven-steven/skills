@@ -2,8 +2,6 @@
 import {
   readProject,
   writeProject,
-  readCommit,
-  writeCommit,
   readReportedCommitIds,
   writeReportedCommitIds,
   resolveScriptsDir,
@@ -19,17 +17,19 @@ if (!action) {
   process.exit(1);
 }
 
+// resolve: no repo-path needed
 if (action === "resolve") {
-  const scriptsDir = resolveScriptsDir({
+  const dir = resolveScriptsDir({
     searchRoots: [
       path.join(os.homedir(), ".claude", "plugins", "cache"),
       process.cwd(),
     ],
   });
-  process.stdout.write((scriptsDir || path.dirname(fileURLToPath(import.meta.url))) + "\n");
+  process.stdout.write((dir || path.dirname(fileURLToPath(import.meta.url))) + "\n");
   process.exit(0);
 }
 
+// remaining actions require repo-path
 const repoPath = process.argv[3];
 if (!repoPath) {
   process.stderr.write("Missing argument: <repo_path>\n");
@@ -49,29 +49,23 @@ switch (action) {
     process.stdout.write(`已缓存项目名称: ${repoPath} → ${name}\n`);
     break;
   }
-  case "read-commit": {
-    const sha = readCommit(repoPath);
-    if (sha) process.stdout.write(sha + "\n");
-    break;
-  }
-  case "write-commit": {
-    const sha = process.argv[4];
-    if (!sha) { process.stderr.write("Missing argument: commit_id\n"); process.exit(1); }
-    writeCommit(repoPath, sha);
-    process.stdout.write(`已缓存 commit id: ${sha}\n`);
-    break;
-  }
   case "read-reported": {
-    process.stdout.write(JSON.stringify(readReportedCommitIds(repoPath)) + "\n");
+    const ids = readReportedCommitIds(repoPath);
+    process.stdout.write(JSON.stringify(ids) + "\n");
     break;
   }
   case "write-reported": {
     const json = process.argv[4];
     if (!json) { process.stderr.write("Missing argument: commit_ids_json\n"); process.exit(1); }
+    let ids;
+    try { ids = JSON.parse(json); } catch (err) {
+      process.stderr.write(`Invalid reported commit IDs: ${err.message}\n`);
+      process.exit(1);
+    }
     try {
-      writeReportedCommitIds(repoPath, JSON.parse(json));
-    } catch (error) {
-      process.stderr.write(`Invalid reported commit IDs: ${error.message}\n`);
+      writeReportedCommitIds(repoPath, ids);
+    } catch (err) {
+      process.stderr.write(`Failed to persist reported commit IDs: ${err.message}\n`);
       process.exit(1);
     }
     process.stdout.write("已缓存已汇报 commit IDs\n");

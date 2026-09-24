@@ -49,20 +49,6 @@ export function writeProject(repoPath, name, opts = {}) {
   saveJson(file, cache);
 }
 
-// Legacy single-SHA access is retained for existing callers. New report runs use
-// the date-scoped ID frontier below, which is necessary for exact --all increments.
-export function readCommit(repoPath, opts = {}) {
-  const value = loadJson(cacheFile(COMMIT_CACHE_FILENAME, opts))[normalizeKey(repoPath)];
-  return typeof value === "string" ? value : "";
-}
-
-export function writeCommit(repoPath, commitId, opts = {}) {
-  const file = cacheFile(COMMIT_CACHE_FILENAME, opts);
-  const cache = loadJson(file);
-  cache[normalizeKey(repoPath)] = commitId;
-  saveJson(file, cache);
-}
-
 function localDate() {
   const now = new Date();
   const year = now.getFullYear();
@@ -77,9 +63,7 @@ export function readReportedCommitIds(repoPath, opts = {}) {
   if (value && typeof value === "object" && value.date === date && Array.isArray(value.commitIds)) {
     return value.commitIds.filter((id) => typeof id === "string");
   }
-  // A legacy SHA is safely recognized as reported, but cannot model an --all
-  // frontier. The next successful report migrates the entry to the new schema.
-  return typeof value === "string" ? [value] : [];
+  return [];
 }
 
 export function writeReportedCommitIds(repoPath, commitIds, opts = {}) {
