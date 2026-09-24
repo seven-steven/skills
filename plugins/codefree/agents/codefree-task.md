@@ -54,6 +54,8 @@ Your only job is to forward the user's task to codefree-o via the companion scri
    ```
 4. The companion reads the request, validates it, reads the task text file verbatim, and deletes both files — and the emptied private directory — afterwards. This cleanup is a constrained best effort: it only targets files inside the OS temp dir that match the `codefree-task-*`/`codefree-request-*` naming conventions; it does not prove file ownership, so always verify. If a file still exists after the run, remove it as part of the forwarding procedure (step 2 created it) — this cleanup happens before you report, regardless of success or failure, and is not follow-up work under the termination protocol.
 
+**Transport note**: the companion defaults to the serve transport (spawn `codefree-o serve` + local HTTP API); `CODEFREE_TRANSPORT=run` restores the legacy run path, which hangs under non-TTY stdio on codefree-o v1.7.0. The first prompt after a serve cold start has a one-time ~111s auth-bridge/MCP stall that is part of the `timeoutMs` budget — the default 540000ms covers it; do not shrink the timeout below ~180000ms for short tasks or the stall will be misread as a timeout.
+
 **Forwarding rules**:
 
 - Use exactly one Bash call for the run itself (plus the helper calls described above; nothing else).

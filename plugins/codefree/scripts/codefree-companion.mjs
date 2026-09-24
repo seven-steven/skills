@@ -9,6 +9,12 @@
  *   help   Show usage.
  *
  * Design notes:
+ *   - Transport: by default the task runs over the serve transport
+ *     (scripts/lib/serve-client.mjs): spawn `codefree-o serve` and drive it
+ *     via its local HTTP API. The legacy run transport (spawn `codefree-o
+ *     run --format json --auto`) stays reachable via CODEFREE_TRANSPORT=run,
+ *     but codefree-o v1.7.0 hangs on that path under non-TTY stdio pipes —
+ *     see the serve-client header and plugin README for the evidence.
  *   - The task prompt travels through one of:
  *       --prompt-stdin   (preferred: agent single-quote-escapes the text
  *                         into the Bash tool call itself)
@@ -46,6 +52,7 @@ import process from "node:process";
 import { parseArgs } from "./lib/args.mjs";
 import { needsShellForBinary, resolveBinaryPath, terminateProcessTree } from "./lib/process.mjs";
 import { buildRunPayload, parseEventLine } from "./lib/run-events.mjs";
+import { runServeTask } from "./lib/serve-client.mjs";
 
 const CODEFREE_BIN = process.env.CODEFREE_BIN ?? "codefree-o";
 // Kept below the Claude Code Bash tool hard cap (600 000 ms) so a foreground
@@ -171,6 +178,23 @@ const USAGE = [
 ].join("\n");
 
 class UsageError extends Error {}
+
+// 传输层选择：serve（spawn codefree-o serve + 本地 HTTP API）是默认通道；
+// run（spawn codefree-o run --format json --auto）保留为逃生通道——codefree-o
+// v1.7.0 的 run 在非 TTY stdio 管道下首个事件输出前会永久阻塞（详见
+// scripts/lib/serve-client.mjs 头注与 README），仅在排查 serve 通道自身问题时
+// 才值得切换 CODEFREE_TRANSPORT=run。
+const VALID_TRANSPORTS = new Set(["serve", "run"]);
+
+function resolveTransport() {
+  const value = process.env.CODEFREE_TRANSPORT ?? "serve";
+  if (!VALID_TRANSPORTS.has(value)) {
+    throw new UsageError(
+      `Invalid CODEFREE_TRANSPORT value: ${value} (expected "serve" or "run").`
+    );
+  }
+  return value;
+}
 
 // ---------------------------------------------------------------------------
 // CLI parsing (strict allowlist — anything unknown is a usage error)
@@ -790,6 +814,19 @@ async function handleTaskCommand(argv) {
     throw new UsageError(`Working directory does not exist or is not a directory: ${resolvedCwd}`);
   }
 
+  if (resolveTransport() === "serve") {
+    const { payload, exitCode } = await runServeTask({
+      binName: CODEFREE_BIN,
+      prompt,
+      options,
+      cwd: resolvedCwd,
+      env: buildChildEnv(),
+      timeoutMs
+    });
+    emitResult(payload, exitCode, asJson);
+    return;
+  }
+
   const argvForCodefree = buildCodefreeArgv({ prompt, options, resolvedCwd });
   const { payload, exitCode } = await runCodefree({
     argv: argvForCodefree,
@@ -797,7 +834,11 @@ async function handleTaskCommand(argv) {
     timeoutMs
   });
 
-  if (options.json) {
+  emitResult(payload, exitCode, asJson);
+}
+
+function emitResult(payload, exitCode, asJson) {
+  if (asJson) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
     process.stdout.write(`${payload.rendered ?? renderRunResult(payload)}\n`);

@@ -48,6 +48,9 @@ export function makeSandbox({ binName } = {}) {
   const env = {
     ...process.env,
     CODEFREE_BIN: "codefree-o",
+    // Existing companion tests pin the run transport's argv/event contract;
+    // serve-transport tests override this explicitly per test.
+    CODEFREE_TRANSPORT: "run",
     CODEFREE_FAKE_RECORD: recordFile,
     PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
     ...(process.platform === "win32" && !process.env.PATHEXT
