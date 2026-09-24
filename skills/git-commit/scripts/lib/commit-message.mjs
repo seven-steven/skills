@@ -21,25 +21,6 @@ function normalize(text) {
     .replace(/\n+$/, "");
 }
 
-export function parseMessage(text) {
-  const normalized = normalize(text);
-  const lines = normalized.split("\n");
-  const lastLine = lines.at(-1) ?? "";
-  const footer = extractTaskIdFromFooter(lastLine) ? [lastLine] : [];
-  const content = footer.length > 0 ? lines.slice(0, -1).join("\n").replace(/\n+$/, "") : normalized;
-  const parts = content.split(/\n\n+/);
-  const subject = parts[0]?.trim() ?? "";
-  const rest = parts.slice(1);
-  const last = rest[rest.length - 1] ?? "";
-  const lastLines = last ? last.split("\n") : [];
-  const trailers = lastLines.length > 0 && lastLines.every((line) => /^\w[\w-]*: /.test(line))
-    ? lastLines
-    : [];
-  const bodyParts = trailers.length > 0 ? rest.slice(0, -1) : rest;
-  const body = bodyParts.join("\n\n");
-  return { subject, body, trailers, footer };
-}
-
 export function validateMessage(text) {
   const normalized = normalize(text);
   const errors = [];
@@ -108,10 +89,6 @@ export function validateMessage(text) {
     errors: [],
     parsed: { type, scope: scope ?? null, subject: subjectPart },
   };
-}
-
-export function formatErrorReport(errors) {
-  return errors.map((e) => `  - ${e}`).join("\n") + "\n";
 }
 
 export function addTaskIdFooter(message, taskId) {

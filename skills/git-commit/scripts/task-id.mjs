@@ -1,38 +1,21 @@
 #!/usr/bin/env node
 import { resolveTaskId } from "./lib/task-id.mjs";
+import { parseCommitArgs } from "./lib/args.mjs";
 
 function usage() {
   process.stderr.write("usage: task-id.mjs [--cwd <repo-path>] [taskId]\n");
 }
 
-function parseArgs(argv) {
-  let cwd;
-  let taskId;
-  for (let index = 2; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--cwd") {
-      const value = argv[index + 1];
-      if (cwd !== undefined || value === undefined || value.startsWith("--")) {
-        return { error: true };
-      }
-      cwd = value;
-      index += 1;
-    } else if (arg.startsWith("--") || taskId !== undefined) {
-      return { error: true };
-    } else {
-      taskId = arg;
-    }
-  }
-  return { cwd, taskId };
-}
-
-const parsed = parseArgs(process.argv);
+const parsed = parseCommitArgs(process.argv);
 if (parsed.error) {
   usage();
   process.exit(2);
 }
 
-const result = resolveTaskId(parsed);
+// The positional arg is the task ID; also accept --task-id (equivalent).
+const taskIdArg = parsed.taskId ?? parsed.messageArg;
+
+const result = resolveTaskId({ cwd: parsed.cwd, taskId: taskIdArg });
 if (!result.ok) {
   process.stderr.write("invalid task ID\n");
   process.exit(2);

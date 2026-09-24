@@ -4,84 +4,10 @@ import assert from "node:assert/strict";
 import {
   ANGULAR_TYPES,
   MAX_SUBJECT_LENGTH,
-  parseMessage,
   validateMessage,
-  formatErrorReport,
   addTaskIdFooter,
 } from "../scripts/lib/commit-message.mjs";
 import { TASK_ID_FOOTER_PREFIX } from "../scripts/lib/task-id.mjs";
-
-// ---------------------------------------------------------------------------
-// parseMessage
-// ---------------------------------------------------------------------------
-
-test("parseMessage - single-line message", () => {
-  const r = parseMessage("feat: add login");
-  assert.equal(r.subject, "feat: add login");
-  assert.equal(r.body, "");
-  assert.deepEqual(r.trailers, []);
-  assert.deepEqual(r.footer, []);
-});
-
-test("parseMessage - subject + body separated by blank line", () => {
-  const r = parseMessage("feat: add x\n\nThis is the body.");
-  assert.equal(r.subject, "feat: add x");
-  assert.equal(r.body, "This is the body.");
-});
-
-test("parseMessage - subject + body + trailers", () => {
-  const r = parseMessage("fix: broken\n\nBody text.\n\nRefs: #42\nFixes: #99");
-  assert.equal(r.subject, "fix: broken");
-  assert.deepEqual(r.trailers, ["Refs: #42", "Fixes: #99"]);
-});
-
-test("parseMessage - normalizes CRLF line endings", () => {
-  const r = parseMessage("feat: add x\r\n\r\nbody line");
-  assert.equal(r.subject, "feat: add x");
-  assert.equal(r.body, "body line");
-});
-
-test("parseMessage - strips leading UTF-8 BOM", () => {
-  const r = parseMessage("﻿feat: add x");
-  assert.equal(r.subject, "feat: add x");
-});
-
-test("parseMessage - ignores trailing blank lines", () => {
-  const r = parseMessage("feat: add x\n\nbody\n\n\n");
-  assert.equal(r.subject, "feat: add x");
-  assert.equal(r.body, "body");
-});
-
-test("parseMessage - separates body, trailers, and task ID footer", () => {
-  const r = parseMessage([
-    "fix: broken",
-    "",
-    "Body text.",
-    "",
-    "Refs: #42",
-    "Fixes: #99",
-    "",
-    "- srdcloud task id: %project-101",
-  ].join("\n"));
-  assert.equal(r.subject, "fix: broken");
-  assert.equal(r.body, "Body text.");
-  assert.deepEqual(r.trailers, ["Refs: #42", "Fixes: #99"]);
-  assert.deepEqual(r.footer, ["- srdcloud task id: %project-101"]);
-});
-
-test("parseMessage - preserves mixed trailer-like paragraphs in body", () => {
-  const r = parseMessage("feat: add x\n\nBody\n\nRefs: #1\ncontinuation\n\n- srdcloud task id: %101");
-  assert.equal(r.body, "Body\n\nRefs: #1\ncontinuation");
-  assert.deepEqual(r.trailers, []);
-  assert.deepEqual(r.footer, ["- srdcloud task id: %101"]);
-});
-
-test("parseMessage - recognizes footer after BOM, CRLF, and trailing blank lines", () => {
-  const r = parseMessage("﻿feat: add x\r\n\r\nBody\r\n\r\n- srdcloud task id: %101\r\n\r\n");
-  assert.equal(r.subject, "feat: add x");
-  assert.equal(r.body, "Body");
-  assert.deepEqual(r.footer, ["- srdcloud task id: %101"]);
-});
 
 // ---------------------------------------------------------------------------
 // ANGULAR_TYPES / MAX_SUBJECT_LENGTH constants
@@ -267,21 +193,4 @@ test("addTaskIdFooter - preserves similar body lines that are not valid task foo
   assert.ok(result.includes("- srdcloud task id: %bad trailing text"));
   assert.ok(result.includes("- srdcloud task id:  %project-101"));
   assert.ok(result.endsWith("- srdcloud task id: %project-102"));
-});
-
-// ---------------------------------------------------------------------------
-// formatErrorReport
-// ---------------------------------------------------------------------------
-
-test("formatErrorReport - joins multiple errors with newlines", () => {
-  const report = formatErrorReport(["error one", "error two"]);
-  assert.ok(report.includes("error one"));
-  assert.ok(report.includes("error two"));
-  const lines = report.split("\n").filter(Boolean);
-  assert.ok(lines.length >= 2);
-});
-
-test("formatErrorReport - single error", () => {
-  const report = formatErrorReport(["subject is empty"]);
-  assert.ok(report.includes("subject is empty"));
 });
