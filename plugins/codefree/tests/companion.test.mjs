@@ -196,6 +196,59 @@ test("task - invalid CODEFREE_PROXY fails fast with a usage error", () => {
   }
 });
 
+test("task - CODEFREE_PROXY KEY=VALUE form sets each proxy var independently", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_FAKE_SCENARIO = scenarioFile(sandbox, { events: [textEvent("ok")] });
+    sandbox.env.CODEFREE_PROXY =
+      "HTTP_PROXY=http://user:pass@proxy.example.com:1080 " +
+      "HTTPS_PROXY=http://user:pass@proxy.example.com:1080 " +
+      "ALL_PROXY=socks5h://user:pass@proxy.example.com " +
+      "NO_PROXY=127.0.0.1,10.0.0.0/8";
+
+    const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
+      input: "go"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const record = readJsonFile(sandbox.recordFile);
+    assert.equal(record.proxy.HTTP_PROXY, "http://user:pass@proxy.example.com:1080");
+    assert.equal(record.proxy.HTTPS_PROXY, "http://user:pass@proxy.example.com:1080");
+    assert.equal(record.proxy.ALL_PROXY, "socks5h://user:pass@proxy.example.com");
+    const noProxy = record.proxy.NO_PROXY.split(",");
+    assert.ok(noProxy.includes("localhost"), "localhost is force-added to NO_PROXY");
+    assert.ok(noProxy.includes("127.0.0.1"));
+    assert.ok(noProxy.includes("10.0.0.0/8"), "caller NO_PROXY entries are preserved");
+  } finally {
+    cleanupSandbox(sandbox);
+  }
+});
+
+test("task - CODEFREE_PROXY rejects unknown keys and bad proxy schemes", () => {
+  const sandbox = makeSandbox();
+  try {
+    sandbox.env.CODEFREE_FAKE_SCENARIO = scenarioFile(sandbox, { events: [textEvent("ok")] });
+    for (const [index, bad] of [
+      "SOCKS_PROXY=socks5h://proxy.example.com", // unknown key
+      "HTTP_PROXY=socks5h://proxy.example.com", // http(s) only for HTTP_PROXY
+      "ALL_PROXY=not-a-url" // invalid scheme
+    ].entries()) {
+      sandbox.env.CODEFREE_PROXY = bad;
+      const result = runCompanion(["task", "--prompt-stdin", "--cwd", sandbox.cwd], {
+        cwd: sandbox.cwd,
+        env: sandbox.env,
+        input: "go"
+      });
+      assert.equal(result.status, 2, `case ${index} should fail: ${bad}`);
+      assert.match(result.stderr, /CODEFREE_PROXY/);
+    }
+  } finally {
+    cleanupSandbox(sandbox);
+  }
+});
+
 test("task - only allowlisted flags are forwarded; --auto is always present", () => {
   const sandbox = makeSandbox();
   try {

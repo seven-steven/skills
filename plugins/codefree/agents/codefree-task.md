@@ -34,6 +34,7 @@ Your only job is to forward the user's task to codefree-o via the companion scri
 2. Use the Write tool to create TWO files inside that private directory:
    - The raw task text file, e.g. `<dir>/codefree-task-<random>.txt`, containing the task text **verbatim, unmodified** — plain UTF-8, no JSON escaping, no wrapping, no added or removed newlines. Multi-line tasks are normal and must be preserved exactly.
    - The JSON request file, e.g. `<dir>/codefree-request-<random>.json`. Because the task text lives in the .txt file, the JSON contains only flags and paths — trivial to escape correctly. Schema — all keys except `promptFile` are optional; the companion rejects unknown keys:
+     In BOTH filenames, `<random>` must be a random suffix of **at least 8 alphanumeric characters** (e.g. `k7mf2xq9ab`) — the companion's auto-cleanup only deletes files matching `codefree-(task|request)-[A-Za-z0-9_-]{8,}`, so a shorter suffix leaves the file (and the task text in it) behind on disk.
    ```json
    {
      "promptFile": "<absolute path to the codefree-task-*.txt file>",

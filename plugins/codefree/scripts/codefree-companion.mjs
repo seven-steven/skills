@@ -404,39 +404,79 @@ function killTreeHard(pid) {
 }
 
 const PROXY_URL_PATTERN = /^https?:\/\/\S+$/;
+const ALL_PROXY_URL_PATTERN = /^(?:https?|socks5h?):\/\/\S+$/;
 const LOCAL_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1"];
+const PROXY_ASSIGNMENT_PATTERN = /^(HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY)=(\S+)$/;
 
 /**
  * Build the environment for the codefree-o child process.
  *
  * `CODEFREE_PROXY` routes ONLY codefree-o traffic through a proxy without
- * touching the rest of the session: when set, it overrides HTTP_PROXY,
- * HTTPS_PROXY and ALL_PROXY for the child. NO_PROXY is preserved and always
- * gains localhost/127.0.0.1 (required by upstream docs — the TUI talks to a
- * local HTTP server and must not loop through the proxy). An invalid value
- * fails fast instead of silently producing a broken proxy config.
+ * touching the rest of the session. Two value formats are accepted:
+ *
+ *   1. A single http(s) proxy URL — shortcut: HTTP_PROXY, HTTPS_PROXY and
+ *      ALL_PROXY all get that URL.
+ *   2. Space-separated KEY=VALUE assignments naming any of HTTP_PROXY,
+ *      HTTPS_PROXY, ALL_PROXY, NO_PROXY — each key overrides exactly the
+ *      matching child env var (ALL_PROXY also accepts socks5(h):// URLs).
+ *      Example:
+ *        "HTTP_PROXY=http://u:p@h:1080 HTTPS_PROXY=http://u:p@h:1080
+ *         ALL_PROXY=socks5h://u:p@h NO_PROXY=127.0.0.1,10.0.0.0/8"
+ *
+ * Whenever at least one proxy variable is set, NO_PROXY is preserved and
+ * always gains localhost/127.0.0.1 (required by upstream docs — the TUI
+ * talks to a local HTTP server and must not loop through the proxy).
+ * Invalid values fail fast instead of silently producing a broken config.
  */
 export function buildChildEnv(sourceEnv = process.env) {
   const childEnv = { ...sourceEnv, LANG: sourceEnv.LANG ?? "C.UTF-8" };
-  const proxyUrl = sourceEnv.CODEFREE_PROXY;
-  if (proxyUrl === undefined || proxyUrl === "") {
+  const raw = sourceEnv.CODEFREE_PROXY;
+  if (raw === undefined || raw === "") {
     return childEnv;
   }
-  if (typeof proxyUrl !== "string" || !PROXY_URL_PATTERN.test(proxyUrl)) {
-    throw new UsageError(
-      `CODEFREE_PROXY must be an http(s) proxy URL (got: ${String(proxyUrl).slice(0, 60)})`
-    );
-  }
-  childEnv.HTTP_PROXY = proxyUrl;
-  childEnv.HTTPS_PROXY = proxyUrl;
-  childEnv.ALL_PROXY = proxyUrl;
-  const noProxy = (childEnv.NO_PROXY ?? "").split(",").map((entry) => entry.trim());
-  for (const entry of LOCAL_NO_PROXY_ENTRIES) {
-    if (!noProxy.includes(entry)) {
-      noProxy.unshift(entry);
+
+  let overrides;
+  if (typeof raw === "string" && PROXY_URL_PATTERN.test(raw)) {
+    overrides = { HTTP_PROXY: raw, HTTPS_PROXY: raw, ALL_PROXY: raw };
+  } else {
+    overrides = {};
+    for (const token of String(raw).trim().split(/\s+/)) {
+      const match = token.match(PROXY_ASSIGNMENT_PATTERN);
+      if (!match) {
+        throw new UsageError(
+          `CODEFREE_PROXY has an invalid segment (expected KEY=VALUE with KEY in ` +
+            `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY, got: ${token.slice(0, 60)})`
+        );
+      }
+      overrides[match[1]] = match[2];
+    }
+    if (overrides.HTTP_PROXY !== undefined && !PROXY_URL_PATTERN.test(overrides.HTTP_PROXY)) {
+      throw new UsageError(`CODEFREE_PROXY HTTP_PROXY must be an http(s) URL`);
+    }
+    if (overrides.HTTPS_PROXY !== undefined && !PROXY_URL_PATTERN.test(overrides.HTTPS_PROXY)) {
+      throw new UsageError(`CODEFREE_PROXY HTTPS_PROXY must be an http(s) URL`);
+    }
+    if (overrides.ALL_PROXY !== undefined && !ALL_PROXY_URL_PATTERN.test(overrides.ALL_PROXY)) {
+      throw new UsageError(`CODEFREE_PROXY ALL_PROXY must be an http(s) or socks5(h) URL`);
     }
   }
-  childEnv.NO_PROXY = noProxy.join(",");
+
+  let proxySet = false;
+  for (const [key, value] of Object.entries(overrides)) {
+    childEnv[key] = value;
+    if (key !== "NO_PROXY") {
+      proxySet = true;
+    }
+  }
+  if (proxySet) {
+    const noProxy = (childEnv.NO_PROXY ?? "").split(",").map((entry) => entry.trim());
+    for (const entry of LOCAL_NO_PROXY_ENTRIES) {
+      if (!noProxy.includes(entry)) {
+        noProxy.unshift(entry);
+      }
+    }
+    childEnv.NO_PROXY = noProxy.join(",");
+  }
   return childEnv;
 }
 

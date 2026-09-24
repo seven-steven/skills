@@ -101,7 +101,17 @@ subagent 本身不内置任何关于“哪类任务适合交给 codefree-o”的
 | 变量             | 说明                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CODEFREE_BIN`   | 覆盖 codefree-o 的二进制名称或绝对路径（默认：`codefree-o`，不依赖任何 shell alias）。Windows 必须指向原生可执行文件（如 `.exe`）；不支持 npm 提供的 `.cmd`/`.bat` 包装脚本，因为它们需要经 `cmd.exe` 转发任意任务文本。                                                                                                                                            |
-| `CODEFREE_PROXY` | 仅作用于 codefree-o 子进程的代理地址（`http(s)://…`）。设置后覆盖子进程继承的 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`，并确保 `NO_PROXY` 含 `localhost,127.0.0.1`；不设置则原样继承会话代理环境，非法值使该次调用直接失败（exit 2）。适合"个别环境需要专属代理"的场景：默认不设，仅在需要代理的项目或会话局部配置（如项目 `.claude/settings.local.json` 的 `env`）。 |
+| `CODEFREE_PROXY` | 仅作用于 codefree-o 子进程的代理配置。值为单个 `http(s)://` 代理 URL（三个 `*_PROXY` 同值），或空格分隔的 `KEY=VALUE` 串分别指定各变量；设置任一代理后 `NO_PROXY` 强制含 `localhost,127.0.0.1`，原有条目保留；不设置则原样继承会话代理环境；非法值使该次调用直接失败（exit 2）。仅在需要代理的项目或会话局部配置（如项目 `.claude/settings.local.json` 的 `env`）。 |
+
+`KEY=VALUE` 形式示例（`ALL_PROXY` 额外接受 `socks5(h)://`）：
+
+```jsonc
+{
+  "env": {
+    "CODEFREE_PROXY": "HTTP_PROXY=http://user:pass@proxy.example.com:1080 HTTPS_PROXY=http://user:pass@proxy.example.com:1080 ALL_PROXY=socks5h://user:pass@proxy.example.com NO_PROXY=127.0.0.1,other_internal_ips",
+  },
+}
+```
 
 ## Windows 注意事项
 
