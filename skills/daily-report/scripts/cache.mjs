@@ -4,8 +4,8 @@ import {
   writeProject,
   readReportedCommitIds,
   writeReportedCommitIds,
-  resolveScriptsDir,
 } from "./lib/cache.mjs";
+import { resolveScriptsDir } from "./lib/resolve-scripts-dir.mjs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

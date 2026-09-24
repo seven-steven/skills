@@ -7,63 +7,74 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  getClipboardCandidates,
   copyToClipboard,
 } from "../scripts/lib/clipboard.mjs";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = path.join(__dir, "..", "scripts");
 
-// ─── pure-function unit tests ────────────────────────────────────────────────
+function tryOrder(text, opts = {}) {
+  const tried = [];
+  const mockSpawn = (cmd) => {
+    tried.push(cmd);
+    return { error: Object.assign(new Error("ENOENT"), { code: "ENOENT" }) };
+  };
+  copyToClipboard(text, { ...opts, spawn: mockSpawn });
+  return tried;
+}
 
-test("getClipboardCandidates - darwin returns pbcopy", () => {
-  const c = getClipboardCandidates({ platform: "darwin" });
-  assert.deepEqual(c, [{ cmd: "pbcopy", args: [] }]);
+// ─── clipboard-tool candidate order (exercised through copyToClipboard) ─────────
+
+test("copyToClipboard - darwin tries pbcopy", () => {
+  const tried = tryOrder("hello", { platform: "darwin" });
+  assert.deepEqual(tried, ["pbcopy"]);
 });
 
-test("getClipboardCandidates - win32 returns clip", () => {
-  const c = getClipboardCandidates({ platform: "win32" });
-  assert.deepEqual(c, [{ cmd: "clip", args: [] }]);
+test("copyToClipboard - win32 tries clip", () => {
+  const tried = tryOrder("hello", { platform: "win32" });
+  assert.deepEqual(tried, ["clip"]);
 });
 
-test("getClipboardCandidates - linux WSL_DISTRO_NAME puts clip.exe first", () => {
-  const c = getClipboardCandidates({
+test("copyToClipboard - linux WSL_DISTRO_NAME tries clip.exe first", () => {
+  const tried = tryOrder("hello", {
     platform: "linux",
     release: "5.15.0-generic",
     env: { WSL_DISTRO_NAME: "Ubuntu" },
   });
-  assert.equal(c[0].cmd, "clip.exe");
-  assert.ok(c.some((x) => x.cmd === "xclip"));
+  assert.equal(tried[0], "clip.exe");
+  assert.ok(tried.includes("xclip"));
 });
 
-test("getClipboardCandidates - linux microsoft kernel puts clip.exe first", () => {
-  const c = getClipboardCandidates({
+test("copyToClipboard - linux microsoft kernel tries clip.exe first", () => {
+  const tried = tryOrder("hello", {
     platform: "linux",
     release: "5.10-microsoft-standard-WSL2",
     env: {},
   });
-  assert.equal(c[0].cmd, "clip.exe");
+  assert.equal(tried[0], "clip.exe");
 });
 
-test("getClipboardCandidates - linux Wayland includes wl-copy before xclip", () => {
-  const c = getClipboardCandidates({
+test("copyToClipboard - linux Wayland tries wl-copy before xclip", () => {
+  const tried = tryOrder("hello", {
     platform: "linux",
     release: "6.1.0",
     env: { WAYLAND_DISPLAY: "wayland-0" },
   });
-  const wlIdx = c.findIndex((x) => x.cmd === "wl-copy");
-  const xclipIdx = c.findIndex((x) => x.cmd === "xclip");
+  const wlIdx = tried.indexOf("wl-copy");
+  const xclipIdx = tried.indexOf("xclip");
   assert.ok(wlIdx !== -1, "wl-copy not found");
   assert.ok(xclipIdx !== -1, "xclip not found");
   assert.ok(wlIdx < xclipIdx, "wl-copy should come before xclip");
 });
 
-test("getClipboardCandidates - linux plain returns only xclip and xsel", () => {
-  const c = getClipboardCandidates({ platform: "linux", release: "6.1.0", env: {} });
-  assert.equal(c.length, 2);
-  assert.equal(c[0].cmd, "xclip");
-  assert.equal(c[1].cmd, "xsel");
+test("copyToClipboard - linux plain tries only xclip and xsel", () => {
+  const tried = tryOrder("hello", { platform: "linux", release: "6.1.0", env: {} });
+  assert.equal(tried.length, 2);
+  assert.equal(tried[0], "xclip");
+  assert.equal(tried[1], "xsel");
 });
+
+// ─── copyToClipboard pure-function unit tests ───────────────────────────────────
 
 test("copyToClipboard - empty string returns empty-input, no spawn called", () => {
   let spawnCalled = false;

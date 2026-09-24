@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 
-export function getClipboardCandidates({
+function getClipboardCandidates({
   platform = process.platform,
   release = os.release(),
   env = process.env,
